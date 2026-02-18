@@ -46,6 +46,7 @@ public class StatusEffectParams {
 	public boolean LastsUntilRest;
 	public StatusEffectParams.IntervalRateType IntervalRate;
 	public boolean HideFromUi;
+	public boolean HideFromPortrait;
 	public boolean OneHitUse;
 	public boolean ChecksReligion;
 	public GameObject OnStartVisualEffect;

@@ -33,40 +33,55 @@ public class Directories {
 	private File settingsFile = new File(".", "settings.json");
 	private File working = new File(System.getProperty("java.io.tmpdir"), "EK-unpacked-saves");
 
-	public File root () { return root; }
-	public File jar () { return jar; }
-	public File ui () { return ui; }
+	public File root() {
+		return root;
+	}
 
-	public File settingsFile () { return settingsFile; }
-	public void settingsFile (final File f) { settingsFile = f; }
+	public File jar() {
+		return jar;
+	}
 
-	public File working () { return working; }
-	public void working (final File dir) { working = dir; }
+	public File ui() {
+		return ui;
+	}
 
-	Directories () {
+	public File settingsFile() {
+		return settingsFile;
+	}
+
+	public void settingsFile(final File f) {
+		settingsFile = f;
+	}
+
+	public File working() {
+		return working;
+	}
+
+	public void working(final File dir) {
+		working = dir;
+	}
+
+	Directories() {
 		createWorking();
 	}
 
-	public void createWorking () {
-		if (!working().mkdir()) {
+	public void createWorking() {
+		if (!working().exists() && !working().mkdirs()) {
 			logger.error(
-				"Unable to create working directory in '%s'.%n"
-				, working().getAbsolutePath());
+					"Unable to create working directory in '%s'.%n", working().getAbsolutePath());
 		}
 	}
 
-	public void deleteWorking () {
+	public void deleteWorking() {
 		try {
 			FileUtils.deleteDirectory(working());
 		} catch (final IOException e) {
 			logger.error(
-				"Unable to delete working directory at '%s': %s%n"
-				, working().getAbsolutePath()
-				, e.getMessage());
+					"Unable to delete working directory at '%s': %s%n", working().getAbsolutePath(), e.getMessage());
 		}
 	}
 
-	public void emptyWorking () {
+	public void emptyWorking() {
 		deleteWorking();
 		createWorking();
 	}

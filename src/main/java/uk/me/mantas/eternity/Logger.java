@@ -19,49 +19,94 @@
 package uk.me.mantas.eternity;
 
 import org.slf4j.LoggerFactory;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 
 public class Logger {
 	private final Class cls;
 	private final org.slf4j.Logger slfLogger;
 
-	private Logger (final Class cls) {
+	private Logger(final Class cls) {
 		this.cls = cls;
 		slfLogger = LoggerFactory.getLogger(cls);
 	}
 
-	public void warn (final String format, final Object... varargs) {
-		log("WARN   ", format, varargs);
+	public void info(final String format, final Object... varargs) {
+		log("INFO   ", null, format, varargs);
 	}
 
-	public void error (final String format, final Object... varargs) {
-		log("ERROR  ", format, varargs);
+	public void warn(final String format, final Object... varargs) {
+		log("WARN   ", null, format, varargs);
 	}
 
-	private void log (final String level, final String format, final Object... varargs) {
+	public void error(final String format, final Object... varargs) {
+		log("ERROR  ", null, format, varargs);
+	}
+
+	public void error(final Throwable t, final String format, final Object... varargs) {
+		log("ERROR  ", t, format, varargs);
+	}
+
+	private void log(final String level, final Throwable t, final String format, final Object... varargs) {
 		final String className = cls.getSimpleName();
-		final int lineNumber = getCallerLineNumber();
+		final int lineNumber = t != null ? getExceptionLineNumber(t) : getCallerLineNumber();
 
 		String displayClassName = String.format("%-20s", className);
 		if (displayClassName.length() > 20) {
-			displayClassName = displayClassName.substring(0, 21);
+			displayClassName = displayClassName.substring(0, 20);
 		}
 
-		final String displayLineNumber = String.format("%-3d", lineNumber);
+		final String displayLineNumber = String.format("%-4d", lineNumber);
+		final String message = String.format(format, varargs);
 
-		slfLogger.error(
-			displayClassName + "  "
-				+ displayLineNumber + "  "
-				+ level
-				+ String.format(format, varargs));
+		StringBuilder sb = new StringBuilder();
+		sb.append(displayClassName).append(" ").append(displayLineNumber).append(" ").append(level).append(" ")
+				.append(message);
+
+		if (t != null) {
+			sb.append("\nException Details: ").append(t.toString());
+			StringWriter sw = new StringWriter();
+			t.printStackTrace(new PrintWriter(sw));
+			sb.append("\nStack Trace:\n").append(sw.toString());
+		}
+
+		final String fullMessage = sb.toString();
+
+		switch (level.trim()) {
+			case "INFO":
+				slfLogger.info(fullMessage);
+				break;
+			case "WARN":
+				slfLogger.warn(fullMessage);
+				break;
+			case "ERROR":
+				slfLogger.error(fullMessage);
+				break;
+			default:
+				slfLogger.error(fullMessage);
+		}
 	}
 
-	private int getCallerLineNumber () {
+	private int getCallerLineNumber() {
 		final StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
-		final int callerIndex = Math.min(3, stackTrace.length - 1);
-		return stackTrace[callerIndex].getLineNumber();
+		for (int i = 1; i < stackTrace.length; i++) {
+			if (!stackTrace[i].getClassName().equals(Logger.class.getName()) &&
+					!stackTrace[i].getMethodName().equals("log")) {
+				return stackTrace[i].getLineNumber();
+			}
+		}
+		return 0;
 	}
 
-	public static Logger getLogger (final Class cls) {
+	private int getExceptionLineNumber(Throwable t) {
+		StackTraceElement[] st = t.getStackTrace();
+		if (st != null && st.length > 0) {
+			return st[0].getLineNumber();
+		}
+		return 0;
+	}
+
+	public static Logger getLogger(final Class cls) {
 		return new Logger(cls);
 	}
 }

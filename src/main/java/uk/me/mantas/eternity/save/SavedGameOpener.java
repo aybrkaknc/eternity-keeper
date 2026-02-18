@@ -16,7 +16,6 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 package uk.me.mantas.eternity.save;
 
 import com.google.common.collect.ImmutableSet;
@@ -26,24 +25,19 @@ import org.cef.callback.CefQueryCallback;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.json.JSONStringer;
-import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.Settings;
-import uk.me.mantas.eternity.environment.Directories;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.factory.PacketDeserializerFactory;
 import uk.me.mantas.eternity.game.*;
 import uk.me.mantas.eternity.handlers.OpenSavedGame;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
-import uk.me.mantas.eternity.serializer.TypeMap;
 import uk.me.mantas.eternity.serializer.properties.Property;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.AbstractMap.SimpleEntry;
@@ -59,25 +53,20 @@ public class SavedGameOpener implements Runnable {
 	private final CefQueryCallback callback;
 	private final PacketDeserializerFactory packetDeserializer;
 
-	private static final Set<String> SUPPORTED_CLASS_NAMES = ImmutableSet.copyOf(new String[]{
-		"int", "Integer"
-		, "float", "Float"
-		, "double", "Double"
-		, "boolean", "Boolean"
-		, "String"
-		, "UnsignedInteger"
-		//, "EternityDateTime"
-		//, "EternityTimeInterval"
+	private static final Set<String> SUPPORTED_CLASS_NAMES = ImmutableSet.copyOf(new String[] {
+			"int", "Integer", "float", "Float", "double", "Double", "boolean", "Boolean", "String", "UnsignedInteger"
+			// , "EternityDateTime"
+			// , "EternityTimeInterval"
 	});
 
-	public SavedGameOpener (final String saveGameLocation, final CefQueryCallback callback) {
+	public SavedGameOpener(final String saveGameLocation, final CefQueryCallback callback) {
 		this.saveGameLocation = saveGameLocation;
 		this.callback = callback;
 		packetDeserializer = Environment.getInstance().factory().packetDeserializer();
 	}
 
 	@Override
-	public void run () {
+	public void run() {
 		final File savedgame = new File(saveGameLocation);
 		final File mobileObjectsFile = new File(savedgame, "MobileObjects.save");
 
@@ -86,57 +75,30 @@ public class SavedGameOpener implements Runnable {
 			return;
 		}
 
-		final List<Property> gameObjects =
-			deserialize(mobileObjectsFile).stream()
+		final List<Property> gameObjects = deserialize(mobileObjectsFile).stream()
 				.filter(this::isObjectPersistencePacket)
 				.filter(this::hasObjectName)
 				.collect(Collectors.toList());
-
-
-		boolean isWindowsStoreSave = false;
-
-		try {
-			isWindowsStoreSave = new PacketDeserializer(mobileObjectsFile).isWindowsStoreSave();
-
-		} catch (final IOException e) {
-			logger.error(
-					"Unable to open save file '%s': %s%n"
-					, mobileObjectsFile
-					, e.getMessage());
-		}
 
 		final float currency = extractCurrency(gameObjects);
 		final Map<String, Property> globals = extractGlobals(gameObjects);
 		final Map<String, Property> characters = extractCharacters(gameObjects);
 
-
-		try {
-			if (isWindowsStoreSave) convertWindowsStoreSave(savedgame);
-			// TODO: move out so JS dialog offers conversion decision to user
-
-		} catch (final IOException e) {
-			logger.error(
-					"Unable to convert save file '%s': %s%n"
-					, mobileObjectsFile
-					, e.getMessage());
-		}
-
-
-		sendJSON(isWindowsStoreSave, currency, globals, characters);
+		sendJSON(currency, globals, characters);
 	}
 
-	private boolean isObjectPersistencePacket (final Property property) {
+	private boolean isObjectPersistencePacket(final Property property) {
 		return property.obj instanceof ObjectPersistencePacket;
 	}
 
-	private boolean hasObjectName (final Property property) {
+	private boolean hasObjectName(final Property property) {
 		final ObjectPersistencePacket packet = (ObjectPersistencePacket) property.obj;
 		return packet.ObjectName != null;
 	}
 
-	private float extractCurrency (final List<Property> gameObjects) {
-		final Optional<Property> playerProperty =
-			findProperty(gameObjects, objectName -> objectName.toLowerCase().startsWith("player_"));
+	private float extractCurrency(final List<Property> gameObjects) {
+		final Optional<Property> playerProperty = findProperty(gameObjects,
+				objectName -> objectName.toLowerCase().startsWith("player_"));
 
 		if (!playerProperty.isPresent()) {
 			logger.error("Unable to find player mobile object.%n");
@@ -144,8 +106,8 @@ public class SavedGameOpener implements Runnable {
 		}
 
 		final ObjectPersistencePacket playerPacket = unwrapPacket(playerProperty.get());
-		final Optional<ComponentPersistencePacket> inventoryComponent =
-			findComponent(playerPacket.ComponentPackets, "PlayerInventory");
+		final Optional<ComponentPersistencePacket> inventoryComponent = findComponent(playerPacket.ComponentPackets,
+				"PlayerInventory");
 
 		if (!inventoryComponent.isPresent()) {
 			logger.error("Unable to find PlayerInventory component.");
@@ -161,34 +123,29 @@ public class SavedGameOpener implements Runnable {
 		return ((CurrencyValue) currencyValue).v;
 	}
 
-	private static JSONObject globalsToJSON (final Property globalProperty) {
+	private static JSONObject globalsToJSON(final Property globalProperty) {
 		final ObjectPersistencePacket global = unwrapPacket(globalProperty);
 		final JSONObject json = new JSONObject();
 
 		for (final String usefulGlobal : Environment.getInstance().config().usefulGlobals()) {
-			final Optional<ComponentPersistencePacket> packet =
-				findComponent(global.ComponentPackets, usefulGlobal);
+			final Optional<ComponentPersistencePacket> packet = findComponent(global.ComponentPackets, usefulGlobal);
 
 			if (usefulGlobal.equals("GlobalVariables") && packet.isPresent()) {
 				// TODO: deal with hashtables more generically.
 				@SuppressWarnings("unchecked")
-				final Map<String, JSONObject> data =
-					((Hashtable<String, Integer>) packet.get().Variables.get("m_data"))
+				final Map<String, JSONObject> data = ((Hashtable<String, Integer>) packet.get().Variables.get("m_data"))
 						.entrySet().stream()
 						.filter(entry -> isSupportedType(entry.getValue()))
-						.map(entry ->
-							new SimpleEntry<>(entry.getKey(), recordType(entry.getValue())))
+						.map(entry -> new SimpleEntry<>(entry.getKey(), recordType(entry.getValue())))
 						.collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 				json.put("GlobalVariables", data);
 				continue;
 			}
 
 			if (packet.isPresent()) {
-				final Map<String, JSONObject> variables =
-					packet.get().Variables.entrySet().stream()
+				final Map<String, JSONObject> variables = packet.get().Variables.entrySet().stream()
 						.filter(entry -> isSupportedType(entry.getValue()))
-						.map(entry ->
-							new SimpleEntry<>(entry.getKey(), recordType(entry.getValue())))
+						.map(entry -> new SimpleEntry<>(entry.getKey(), recordType(entry.getValue())))
 						.collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
 				json.put(usefulGlobal, variables);
@@ -198,7 +155,7 @@ public class SavedGameOpener implements Runnable {
 		return json;
 	}
 
-	private Optional<JSONObject> charactersToJSON (final Entry<String, Property> entry) {
+	private Optional<JSONObject> charactersToJSON(final Entry<String, Property> entry) {
 		final JSONObject jsonObject = new JSONObject();
 		jsonObject.put("GUID", entry.getKey());
 
@@ -215,12 +172,11 @@ public class SavedGameOpener implements Runnable {
 		}
 
 		if (stats.get().get("OverrideName").get("value") != null
-			&& !stats.get().get("OverrideName").get("value").equals("")) {
+				&& !stats.get().get("OverrideName").get("value").equals("")) {
 
 			name = (String) stats.get().get("OverrideName").get("value");
 		} else if (isCompanion) {
-			final String mappedName =
-				Environment.getInstance().config().companionNameMap().get(name);
+			final String mappedName = Environment.getInstance().config().companionNameMap().get(name);
 
 			if (mappedName != null) {
 				name = mappedName;
@@ -238,25 +194,20 @@ public class SavedGameOpener implements Runnable {
 		return Optional.of(jsonObject);
 	}
 
-	private void sendJSON (
-		boolean isWindowsStoreSave,
-		final float currency
-		, final Map<String, Property> globals
-		, final Map<String, Property> characters) {
+	private void sendJSON(
+			final float currency, final Map<String, Property> globals, final Map<String, Property> characters) {
 
 		final JSONObject json = new JSONObject();
-		json.put("isWindowStoreSave", isWindowsStoreSave);
+		json.put("isWindowStoreSave", false);
 
 		json.put("currency", currency);
 
-		final Map<String, JSONObject> jsonGlobals =
-			globals.entrySet().stream()
+		final Map<String, JSONObject> jsonGlobals = globals.entrySet().stream()
 				.map(entry -> new SimpleEntry<>(entry.getKey(), globalsToJSON(entry.getValue())))
 				.collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 		json.put("globals", jsonGlobals);
 
-		final JSONObject[] jsonCharacters =
-			characters.entrySet().stream()
+		final JSONObject[] jsonCharacters = characters.entrySet().stream()
 				.map(this::charactersToJSON)
 				.filter(Optional::isPresent)
 				.map(Optional::get)
@@ -266,29 +217,27 @@ public class SavedGameOpener implements Runnable {
 		callback.success(json.toString());
 	}
 
-	private boolean detectCompanion (final ObjectPersistencePacket packet) {
+	private boolean detectCompanion(final ObjectPersistencePacket packet) {
 		final String objectName = packet.ObjectName.toLowerCase();
 		return objectName.startsWith("companion_") && !objectName.startsWith("companion_generic");
 	}
 
-	private Optional<Map<String, JSONObject>> extractCharacterStats (
-		final ObjectPersistencePacket packet) {
+	private Optional<Map<String, JSONObject>> extractCharacterStats(
+			final ObjectPersistencePacket packet) {
 
 		return findComponent(packet.ComponentPackets, "CharacterStats")
-			.map(c ->
-				c.Variables.entrySet().stream()
-					.filter(entry -> isSupportedType(entry.getValue()))
-					.map(entry ->
-						new SimpleEntry<>(entry.getKey(), recordType(entry.getValue())))
-					.collect(Collectors.toMap(Entry::getKey, Entry::getValue)));
+				.map(c -> c.Variables.entrySet().stream()
+						.filter(entry -> isSupportedType(entry.getValue()))
+						.map(entry -> new SimpleEntry<>(entry.getKey(), recordType(entry.getValue())))
+						.collect(Collectors.toMap(Entry::getKey, Entry::getValue)));
 	}
 
-	private static JSONObject recordType (final Object obj) {
+	private static JSONObject recordType(final Object obj) {
 		final JSONObject json = new JSONObject();
 		json.put("type", obj.getClass().getName());
 
 		if (obj.getClass().isEnum()) {
-			json.put("value", EKUtils.enumConstantName(obj).orElse(""));
+			json.put("value", enumConstantName(obj).orElse(""));
 		} else if (obj instanceof UnsignedInteger) {
 			json.put("value", ((UnsignedInteger) obj).longValue());
 		} else if (obj instanceof EternityDateTime) {
@@ -302,12 +251,12 @@ public class SavedGameOpener implements Runnable {
 		return json;
 	}
 
-	private static boolean isSupportedType (final Object obj) {
+	private static boolean isSupportedType(final Object obj) {
 		final String cls = obj.getClass().getSimpleName();
 		return SUPPORTED_CLASS_NAMES.contains(cls) || obj.getClass().isEnum();
 	}
 
-	private String extractName (final ObjectPersistencePacket packet) {
+	private String extractName(final ObjectPersistencePacket packet) {
 		String name = "";
 		if (packet.ObjectName.contains("_")) {
 			final int firstUnderscore = packet.ObjectName.indexOf("_");
@@ -320,29 +269,26 @@ public class SavedGameOpener implements Runnable {
 		return name;
 	}
 
-	private boolean detectDead (final ObjectPersistencePacket packet) {
-		final Optional<Float> currentHealth =
-			findComponent(packet.ComponentPackets, "Health")
+	private boolean detectDead(final ObjectPersistencePacket packet) {
+		final Optional<Float> currentHealth = findComponent(packet.ComponentPackets, "Health")
 				.map(c -> (Float) c.Variables.get("CurrentHealth"));
 
 		return currentHealth.isPresent() && currentHealth.get() == 0f;
 	}
 
-	private String extractPortrait (
-		final ObjectPersistencePacket packet
-		, final boolean isCompanion) {
+	private String extractPortrait(
+			final ObjectPersistencePacket packet, final boolean isCompanion) {
 
 		final JSONObject settings = Settings.getInstance().json;
-		Optional<String> portraitSubPath =
-			findComponent(packet.ComponentPackets, "Portrait")
-			.map(c -> (String) c.Variables.get("m_textureLargePath"));
+		Optional<String> portraitSubPath = findComponent(packet.ComponentPackets, "Portrait")
+				.map(c -> (String) c.Variables.get("m_textureLargePath"));
 
 		if (isCompanion && portraitSubPath.orElse("").length() < 1) {
 			final String name = extractName(packet);
 			portraitSubPath = Optional.of(
-				String.format(
-					Environment.getInstance().config().companionPortraitPath()
-					, name.toLowerCase().replace(" ", "_")));
+					String.format(
+							Environment.getInstance().config().companionPortraitPath(),
+							name.toLowerCase().replace(" ", "_")));
 		}
 
 		if (!portraitSubPath.isPresent()) {
@@ -356,16 +302,16 @@ public class SavedGameOpener implements Runnable {
 			return "";
 		}
 
-		final Path portraitPath =
-			Paths.get(installationPath)
+		final Path portraitPath = Paths.get(installationPath)
 				.resolve(Environment.getInstance().config().pillarsDataDirectory())
 				.resolve(portraitSubPath.get())
 				.normalize();
 
 		if (!portraitPath.toFile().exists()) {
 			logger.error(
-				"Game files contained reference to portrait at '%s' "
-				+ "but it didn't exist.%n", portraitPath.toString());
+					"Game files contained reference to portrait at '%s' "
+							+ "but it didn't exist.%n",
+					portraitPath.toString());
 
 			return "";
 		}
@@ -375,21 +321,19 @@ public class SavedGameOpener implements Runnable {
 			return Base64.getEncoder().encodeToString(portraitData);
 		} catch (final IOException e) {
 			logger.error(
-				"Unable to open portrait file '%s': %s%n"
-				, portraitPath.toString()
-				, e.getMessage());
+					"Unable to open portrait file '%s': %s%n", portraitPath.toString(), e.getMessage());
 		}
 
 		return "";
 	}
 
-	private Map<String, Property> extractGlobals (final List<Property> gameObjects) {
+	private Map<String, Property> extractGlobals(final List<Property> gameObjects) {
 		final Map<String, Property> globals = new HashMap<>();
 		for (final Property property : gameObjects) {
 			final ObjectPersistencePacket packet = unwrapPacket(property);
 
 			if (packet.ObjectName.startsWith("Global")
-				|| packet.ObjectName.startsWith("InGameGlobal")) {
+					|| packet.ObjectName.startsWith("InGameGlobal")) {
 
 				globals.put(packet.ObjectName.replace("(Clone)", ""), property);
 			}
@@ -398,15 +342,15 @@ public class SavedGameOpener implements Runnable {
 		return globals;
 	}
 
-	private Map<String, Property> extractCharacters (final List<Property> gameObjects) {
+	private Map<String, Property> extractCharacters(final List<Property> gameObjects) {
 		final Map<String, Property> characters = new HashMap<>();
 		for (final Property property : gameObjects) {
 			final ObjectPersistencePacket packet = unwrapPacket(property);
 			final String objectName = packet.ObjectName.toLowerCase();
 
 			if (packet.ObjectID != null
-				&& (objectName.startsWith("player_")
-					|| objectName.startsWith("companion_"))) {
+					&& (objectName.startsWith("player_")
+							|| objectName.startsWith("companion_"))) {
 
 				characters.put(packet.ObjectID, property);
 			}
@@ -415,7 +359,7 @@ public class SavedGameOpener implements Runnable {
 		return characters;
 	}
 
-	private List<Property> deserialize (final File mobileObjectsFile) {
+	private List<Property> deserialize(final File mobileObjectsFile) {
 		List<Property> objects = new ArrayList<>();
 		try {
 			final PacketDeserializer deserializer = packetDeserializer.forFile(mobileObjectsFile);
@@ -431,49 +375,5 @@ public class SavedGameOpener implements Runnable {
 		}
 
 		return objects;
-	}
-
-
-	// TODO: move out to a file handling class
-	private void convertWindowsStoreSave(File saveGameExtractedDir) throws IOException {
-		final File outputDir = ChangesSaver.createNewSaveDirectory(saveGameExtractedDir.getPath());
-
-		convertWindowsStoreSave(saveGameExtractedDir, outputDir);
-	}
-
-	private void convertWindowsStoreSave(File saveGameExtractedDir, File outputDir) {
-		String saveDir = Settings.getInstance().json.getString("savesLocation");
-
-		String msg = "";
-
-		try {
-			EKUtils.convertWindowsStoreToSteamSaveFiles(saveGameExtractedDir, outputDir);
-
-			SaveGameInfo saveInfo = SaveGameExtractor.extractInfo(outputDir).get();
-			String saveName = saveInfo.userSaveName;
-
-			// TODO: allow user to supply output name in GUI (see suggest JS for editing)
-			SaveGameInfo.updateSaveInfo(outputDir, saveName +  " converted");
-			ChangesSaver.packageSaveGame(outputDir);
-
-			msg = "Windows Store save " + saveGameExtractedDir.getName() + " selected; converted to equivalent Steam/GoG save " +  outputDir.getName();
-
-		} catch (final IOException | URISyntaxException | NoSuchElementException e) {
-			msg = String.format("Unable to convert Windows save file '%s' to %s: %s"
-					, saveGameExtractedDir
-					, outputDir
-					, e.getMessage());
-
-			logger.error(msg);
-		}
-
-		final String json = new JSONStringer()
-				.object()
-				.key("error").value("WINDOWS_STORE_SAVE")
-				.key("msg").value(msg)
-				.endObject()
-				.toString();
-
-		callback.success(json);
 	}
 }

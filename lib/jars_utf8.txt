@@ -1,0 +1,9 @@
+﻿C:\Users\Ayberk.DESKTOP-PL3VNE8\Downloads\Compressed\Eternity.Keeper.win64-75-0-20a\Eternity Keeper win64-75-0-20a\EternityKeeper\source_code\lib\dependencies\gluegen-rt\1.0\gluegen-rt-1.0.jar
+C:\Users\Ayberk.DESKTOP-PL3VNE8\Downloads\Compressed\Eternity.Keeper.win64-75-0-20a\Eternity Keeper win64-75-0-20a\EternityKeeper\source_code\lib\dependencies\gluegen-rt-natives-linux-amd64\1.0\gluegen-rt-natives-linux-amd64-1.0.jar
+C:\Users\Ayberk.DESKTOP-PL3VNE8\Downloads\Compressed\Eternity.Keeper.win64-75-0-20a\Eternity Keeper win64-75-0-20a\EternityKeeper\source_code\lib\dependencies\gluegen-rt-natives-windows-amd64\1.0\gluegen-rt-natives-windows-amd64-1.0.jar
+C:\Users\Ayberk.DESKTOP-PL3VNE8\Downloads\Compressed\Eternity.Keeper.win64-75-0-20a\Eternity Keeper win64-75-0-20a\EternityKeeper\source_code\lib\dependencies\gluegen-rt-natives-windows-i586\1.0\gluegen-rt-natives-windows-i586-1.0.jar
+C:\Users\Ayberk.DESKTOP-PL3VNE8\Downloads\Compressed\Eternity.Keeper.win64-75-0-20a\Eternity Keeper win64-75-0-20a\EternityKeeper\source_code\lib\dependencies\jcef\1.0\jcef-1.0.jar
+C:\Users\Ayberk.DESKTOP-PL3VNE8\Downloads\Compressed\Eternity.Keeper.win64-75-0-20a\Eternity Keeper win64-75-0-20a\EternityKeeper\source_code\lib\dependencies\jogl-all\1.0\jogl-all-1.0.jar
+C:\Users\Ayberk.DESKTOP-PL3VNE8\Downloads\Compressed\Eternity.Keeper.win64-75-0-20a\Eternity Keeper win64-75-0-20a\EternityKeeper\source_code\lib\dependencies\jogl-all-natives-linux-amd64\1.0\jogl-all-natives-linux-amd64-1.0.jar
+C:\Users\Ayberk.DESKTOP-PL3VNE8\Downloads\Compressed\Eternity.Keeper.win64-75-0-20a\Eternity Keeper win64-75-0-20a\EternityKeeper\source_code\lib\dependencies\jogl-all-natives-windows-amd64\1.0\jogl-all-natives-windows-amd64-1.0.jar
+C:\Users\Ayberk.DESKTOP-PL3VNE8\Downloads\Compressed\Eternity.Keeper.win64-75-0-20a\Eternity Keeper win64-75-0-20a\EternityKeeper\source_code\lib\dependencies\jogl-all-natives-windows-i586\1.0\jogl-all-natives-windows-i586-1.0.jar

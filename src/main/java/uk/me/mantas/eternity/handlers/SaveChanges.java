@@ -16,7 +16,6 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 package uk.me.mantas.eternity.handlers;
 
 import org.cef.browser.CefBrowser;
@@ -31,45 +30,45 @@ public class SaveChanges extends CefMessageRouterHandlerAdapter {
 	private static final Logger logger = Logger.getLogger(SaveChanges.class);
 
 	@Override
-	public boolean onQuery (
-		CefBrowser browser
-		, long id
-		, String request
-		, boolean persistent
-		, CefQueryCallback callback) {
+	public boolean onQuery(
+			CefBrowser browser, long id, String request, boolean persistent, CefQueryCallback callback) {
 
 		Environment.getInstance().workers().execute(
-			new ChangesSaver(request, callback));
+				new ChangesSaver(request, callback));
 
 		return true;
 	}
 
 	@Override
-	public void onQueryCanceled (CefBrowser browser, long id) {
+	public void onQueryCanceled(CefBrowser browser, long id) {
 		logger.error("Query #%d was cancelled.%n", id);
 	}
 
-	public static String jsonError () {
+	public static String jsonError() {
 		return new JSONStringer()
-			.object()
+				.object()
 				.key("error").value("Error parsing JSON request.")
-			.endObject()
-			.toString();
+				.endObject()
+				.toString();
 	}
 
-	public static String ioError () {
-		return new JSONStringer()
-			.object()
-				.key("error").value("Unable to write new save file.")
-			.endObject()
-			.toString();
+	public static String ioError() {
+		return genericError("Unable to write new save file.");
 	}
 
-	public static String deserializationError () {
+	public static String genericError(String message) {
 		return new JSONStringer()
-			.object()
+				.object()
+				.key("error").value(message)
+				.endObject()
+				.toString();
+	}
+
+	public static String deserializationError() {
+		return new JSONStringer()
+				.object()
 				.key("error").value("Unable to deserialize new save file.")
-			.endObject()
-			.toString();
+				.endObject()
+				.toString();
 	}
 }

@@ -1,3 +1,6 @@
+# COMPATIBLE WITH THE LATEST VERSION OF PILLARS OF ETERNITY (2025+)
+**This fork has been updated and tested to work seamlessly with the latest Steam/GOG versions of Pillars of Eternity.**
+
 A Pillars of Eternity save editor and character importer/exporter.
 
 # Dependencies
