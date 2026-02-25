@@ -16,7 +16,6 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 package uk.me.mantas.eternity.game;
 
 import uk.me.mantas.eternity.game.UnityEngine.GameObject;
@@ -76,12 +75,12 @@ public class StatusEffectParams {
 	public UUID TrapPrefabSerialized;
 	public Trap TrapSerialized2;
 	public UUID EquippablePrefabSerialized;
-	//public Equippable EquippableSerialized2;
+	// public Equippable EquippableSerialized2;
 	public String EquippableSerialized2;
 	public UUID AttackPrefabSerialized;
 	public AttackBase AttackPrefabSerialized2;
 	// TODO: Check this.
-	//public Affliction AfflictionPrefabSerialized;
+	// public Affliction AfflictionPrefabSerialized;
 	public String AfflictionPrefabSerialized;
 	public float UnadjustedDurationAdd;
 	public float TemporaryDurationAdjustment;
@@ -90,10 +89,13 @@ public class StatusEffectParams {
 	public boolean IsCleanedUp;
 	public float MergedValue;
 
+	// Turn Based Patch 3.9.20 tarafından eklenen alanlar.
+	// Standart sürümde bu alanlar save dosyasında bulunmaz,
+	// varsayılan değerleri (0.0f / null) korunur.
+	public float TacticalMultiplier;
+	public Object Root;
+
 	public enum IntervalRateType {
-		None
-		, Damage
-		, Hazard
-		, Footstep
+		None, Damage, Hazard, Footstep
 	}
 }

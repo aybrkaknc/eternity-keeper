@@ -16,7 +16,6 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 package uk.me.mantas.eternity.serializer;
 
 import com.google.common.primitives.Shorts;
@@ -43,10 +42,9 @@ public class Deserializer {
 	private final List<String> names = new ArrayList<>();
 	private final List<TypePair> types = new ArrayList<>();
 
-	private Map<Integer, ReferenceTargetProperty> propertyCache =
-		new HashMap<>();
+	private Map<Integer, ReferenceTargetProperty> propertyCache = new HashMap<>();
 
-	public Deserializer (DataInput stream, SharpSerializer parent) {
+	public Deserializer(DataInput stream, SharpSerializer parent) {
 		this.stream = stream;
 		this.parent = parent;
 
@@ -55,12 +53,11 @@ public class Deserializer {
 			readHeader(types, this::convertToType);
 		} catch (IOException e) {
 			logger.error(
-				"An error occurred whilst deserializing: %s%n"
-				, e.getMessage());
+					"An error occurred whilst deserializing: %s%n", e.getMessage());
 		}
 	}
 
-	private TypePair convertToType (String s) {
+	private TypePair convertToType(String s) {
 		if (s == null) {
 			return null;
 		}
@@ -78,8 +75,7 @@ public class Deserializer {
 		Class value = typeMap.get(key);
 		if (value == null) {
 			logger.error(
-				"Unable to find class corresponding to key '%s'.%n"
-				, key);
+					"Unable to find class corresponding to key '%s'.%n", key);
 
 			return new TypePair(Object.class, s);
 		}
@@ -87,9 +83,8 @@ public class Deserializer {
 		return new TypePair(value, s);
 	}
 
-	private <T> void readHeader (
-		List<T> items
-		, Function<String, T> readCallback) throws IOException {
+	private <T> void readHeader(
+			List<T> items, Function<String, T> readCallback) throws IOException {
 
 		int count = readNumber();
 
@@ -100,7 +95,7 @@ public class Deserializer {
 		}
 	}
 
-	private String readString () throws IOException {
+	private String readString() throws IOException {
 		if (!stream.readBoolean()) {
 			return null;
 		}
@@ -108,7 +103,7 @@ public class Deserializer {
 		return readCSharpString();
 	}
 
-	private String readCSharpString () throws IOException {
+	private String readCSharpString() throws IOException {
 		int length = read7BitEncodedInt();
 		byte[] buffer = new byte[length];
 		stream.readFully(buffer);
@@ -116,8 +111,8 @@ public class Deserializer {
 		return new String(buffer, "UTF-8");
 	}
 
-	private int read7BitEncodedInt ()
-		throws IOException, NumberFormatException {
+	private int read7BitEncodedInt()
+			throws IOException, NumberFormatException {
 
 		int count = 0;
 		int shift = 0;
@@ -136,7 +131,7 @@ public class Deserializer {
 		return count;
 	}
 
-	private int readNumber () throws IOException {
+	private int readNumber() throws IOException {
 		byte size = stream.readByte();
 
 		switch (size) {
@@ -154,31 +149,33 @@ public class Deserializer {
 		}
 	}
 
-	public Property deserialize () throws IOException {
+	public Property deserialize() throws IOException {
 		byte elementID = stream.readByte();
 		return deserialize(elementID, null);
 	}
 
-	private Property deserialize (byte elementID, TypePair expectedType)
-		throws IOException {
+	private Property deserialize(byte elementID, TypePair expectedType)
+			throws IOException {
 
 		String propertyName = readName();
 		return deserialize(elementID, propertyName, expectedType);
 	}
 
-	private Property deserialize (
-		byte elementID
-		, String propertyName
-		, TypePair expectedType) throws IOException {
+	private Property deserialize(
+			byte elementID, String propertyName, TypePair expectedType) throws IOException {
 
 		TypePair propertyType = readType();
 		if (propertyType == null) {
-			propertyType = new TypePair(expectedType.type, null);
+			if (expectedType != null) {
+				propertyType = new TypePair(expectedType.type, null);
+			} else {
+				propertyType = new TypePair(Object.class, null);
+			}
 		}
 
 		int referenceID = 0;
 		if (elementID == Elements.Reference
-			|| Elements.isElementWithID(elementID)) {
+				|| Elements.isElementWithID(elementID)) {
 
 			referenceID = readNumber();
 			if (elementID == Elements.Reference) {
@@ -186,8 +183,7 @@ public class Deserializer {
 			}
 		}
 
-		Property property =
-			createProperty(elementID, propertyName, propertyType);
+		Property property = createProperty(elementID, propertyName, propertyType);
 
 		if (property == null) {
 			return null;
@@ -204,15 +200,12 @@ public class Deserializer {
 
 		if (property instanceof ReferenceTargetProperty) {
 			if (referenceID > 0) {
-				((ReferenceTargetProperty) property).reference =
-					new Reference(referenceID);
+				((ReferenceTargetProperty) property).reference = new Reference(referenceID);
 
-				((ReferenceTargetProperty) property).reference.isProcessed =
-					true;
+				((ReferenceTargetProperty) property).reference.isProcessed = true;
 
 				propertyCache.put(
-					referenceID
-					, (ReferenceTargetProperty) property);
+						referenceID, (ReferenceTargetProperty) property);
 			}
 		}
 
@@ -220,7 +213,7 @@ public class Deserializer {
 
 		if (property instanceof SingleDimensionalArrayProperty) {
 			parseSingleDimensionalArrayProperty(
-				(SingleDimensionalArrayProperty) property);
+					(SingleDimensionalArrayProperty) property);
 			return property;
 		}
 
@@ -242,31 +235,27 @@ public class Deserializer {
 		return property;
 	}
 
-	private void parseCollectionProperty (CollectionProperty property)
-		throws IOException {
+	private void parseCollectionProperty(CollectionProperty property)
+			throws IOException {
 
 		property.elementType = readType();
 		readProperties(property.properties, property.type.type);
 		readItems(property.items, property.elementType);
 	}
 
-	private void parseDictionaryProperty (DictionaryProperty property)
-		throws IOException {
+	private void parseDictionaryProperty(DictionaryProperty property)
+			throws IOException {
 
 		property.keyType = readType();
 		property.valueType = readType();
 		readProperties(property.properties, property.type.type);
 		readDictionaryItems(
-			property.items
-			, property.keyType
-			, property.valueType);
+				property.items, property.keyType, property.valueType);
 	}
 
-	private void readDictionaryItems (
-		List<Entry<Property, Property>> items
-		, TypePair keyType
-		, TypePair valueType)
-		throws IOException {
+	private void readDictionaryItems(
+			List<Entry<Property, Property>> items, TypePair keyType, TypePair valueType)
+			throws IOException {
 
 		int count = readNumber();
 		for (int i = 0; i < count; i++) {
@@ -274,11 +263,9 @@ public class Deserializer {
 		}
 	}
 
-	private void readDictionaryItem (
-		List<Entry<Property, Property>> items
-		, TypePair keyType
-		, TypePair valueType)
-		throws IOException {
+	private void readDictionaryItem(
+			List<Entry<Property, Property>> items, TypePair keyType, TypePair valueType)
+			throws IOException {
 
 		// Key
 		byte elementID = stream.readByte();
@@ -288,39 +275,38 @@ public class Deserializer {
 		elementID = stream.readByte();
 		Property valueProperty = deserialize(elementID, valueType);
 
-		Entry<Property, Property> item =
-			new SimpleImmutableEntry<>(keyProperty, valueProperty);
+		Entry<Property, Property> item = new SimpleImmutableEntry<>(keyProperty, valueProperty);
 		items.add(item);
 	}
 
-	private void parseSingleDimensionalArrayProperty (
-		SingleDimensionalArrayProperty property)
-		throws IOException {
+	private void parseSingleDimensionalArrayProperty(
+			SingleDimensionalArrayProperty property)
+			throws IOException {
 
 		property.elementType = readType();
 		property.lowerBound = readNumber();
 		readItems(property.items, property.elementType);
 	}
 
-	private void readItems (List items, TypePair elementType) throws IOException {
+	private void readItems(List items, TypePair elementType) throws IOException {
 		int count = readNumber();
 		for (int i = 0; i < count; i++) {
 			byte elementID = stream.readByte();
 			Object subProperty = deserialize(elementID, elementType);
 
-			//noinspection unchecked
+			// noinspection unchecked
 			items.add(subProperty);
 		}
 	}
 
-	private void parseComplexProperty (ComplexProperty property)
-		throws IOException {
+	private void parseComplexProperty(ComplexProperty property)
+			throws IOException {
 
 		readProperties(property.properties, property.type.type);
 	}
 
-	private void readProperties (List properties, Class ownerType)
-		throws IOException {
+	private void readProperties(List properties, Class ownerType)
+			throws IOException {
 
 		int count = readNumber();
 		for (int i = 0; i < count; i++) {
@@ -332,31 +318,26 @@ public class Deserializer {
 				subPropertyInfo = ownerType.getField(propertyName);
 			} catch (NoSuchFieldException e) {
 				logger.error(
-					"No such field '%s' for type '%s'!%n"
-					, propertyName
-					, ownerType.getSimpleName());
+						"No such field '%s' for type '%s'! Skipping.%n", propertyName, ownerType.getSimpleName());
 			}
 
-			Class propertyType =
-				subPropertyInfo != null ? subPropertyInfo.getType() : null;
+			Class propertyType = subPropertyInfo != null ? subPropertyInfo.getType() : null;
 
 			Object subProperty = deserialize(
-				elementID
-				, propertyName
-				, new TypePair(propertyType, null));
+					elementID, propertyName, new TypePair(propertyType, null));
 
-			//noinspection unchecked
+			// noinspection unchecked
 			properties.add(subProperty);
 		}
 	}
 
-	private void parseSimpleProperty (SimpleProperty property)
-		throws IOException {
+	private void parseSimpleProperty(SimpleProperty property)
+			throws IOException {
 
 		property.value = readValue(property.type.type);
 	}
 
-	private Object readValue (Class expectedType) throws IOException {
+	private Object readValue(Class expectedType) throws IOException {
 		if (!stream.readBoolean()) {
 			return null;
 		}
@@ -364,7 +345,7 @@ public class Deserializer {
 		return readValueCore(expectedType);
 	}
 
-	private Object readValueCore (Class expectedType) throws IOException {
+	private Object readValueCore(Class expectedType) throws IOException {
 		try {
 			if (expectedType.getSimpleName().equals("int")) {
 				return stream.readInt();
@@ -400,14 +381,12 @@ public class Deserializer {
 
 				int a = Integer.reverseBytes(buffer.getInt(0));
 				int b = Shorts.fromBytes(
-					buffer.array()[5]
-					, buffer.array()[4])
-					& 0xffff;
+						buffer.array()[5], buffer.array()[4])
+						& 0xffff;
 
 				int c = Shorts.fromBytes(
-					buffer.array()[7]
-					, buffer.array()[6])
-					& 0xffff;
+						buffer.array()[7], buffer.array()[6])
+						& 0xffff;
 
 				int d = buffer.array()[8] & 0xff;
 				int e = buffer.array()[9] & 0xff;
@@ -420,8 +399,8 @@ public class Deserializer {
 
 				long mostSig = ((long) a << 32) + ((long) b << 16) + c;
 				long leastSig = ((long) d << 56) + ((long) e << 48)
-					+ ((long) f << 40) + ((long) g << 32) + ((long) h << 24)
-					+ ((long) i << 16) + ((long) j << 8) + k;
+						+ ((long) f << 40) + ((long) g << 32) + ((long) h << 24)
+						+ ((long) i << 16) + ((long) j << 8) + k;
 
 				return new UUID(mostSig, leastSig);
 			}
@@ -435,7 +414,7 @@ public class Deserializer {
 			}
 		} catch (Exception e) {
 			logger.error(
-				"Unable to read property value: %s%n", e.getMessage());
+					"Unable to read property value: %s%n", e.getMessage());
 		}
 
 		if (expectedType != null) {
@@ -444,9 +423,8 @@ public class Deserializer {
 
 			if (javaType == null) {
 				logger.error(
-					"No mapping found for type '%s', expected type was '%s'.%n"
-					, typeName
-					, expectedType.getSimpleName());
+						"No mapping found for type '%s', expected type was '%s'.%n", typeName,
+						expectedType.getSimpleName());
 			}
 
 			return javaType;
@@ -457,7 +435,7 @@ public class Deserializer {
 		return null;
 	}
 
-	private Byte[] boxBytes (byte[] in) {
+	private Byte[] boxBytes(byte[] in) {
 		Byte[] out = new Byte[in.length];
 		for (int i = 0; i < in.length; i++) {
 			out[i] = in[i];
@@ -466,7 +444,7 @@ public class Deserializer {
 		return out;
 	}
 
-	private Object readEnumeration (Class type) throws IOException {
+	private Object readEnumeration(Class type) throws IOException {
 		int value = stream.readInt();
 		try {
 			Object[] constants = type.getEnumConstants();
@@ -485,16 +463,15 @@ public class Deserializer {
 			}
 		} catch (ArrayIndexOutOfBoundsException e) {
 			logger.error(
-				"Tried to get enum value index #%d that "
-					+ "didn't exist for enum %s.%n"
-				, value
-				, type.getSimpleName());
+					"Tried to get enum value index #%d that "
+							+ "didn't exist for enum %s.%n",
+					value, type.getSimpleName());
 		}
 
 		return null;
 	}
 
-	private Property createProperty (byte elementID, String propertyName, TypePair propertyType) {
+	private Property createProperty(byte elementID, String propertyName, TypePair propertyType) {
 		switch (elementID) {
 			case Elements.SimpleObject:
 				return new SimpleProperty(propertyName, propertyType);
@@ -524,43 +501,36 @@ public class Deserializer {
 		return null;
 	}
 
-	private Property createProperty (
-		int referenceID
-		, String propertyName
-		, TypePair propertyType) {
+	private Property createProperty(
+			int referenceID, String propertyName, TypePair propertyType) {
 
 		ReferenceTargetProperty cachedProperty = propertyCache.get(referenceID);
 
 		if (cachedProperty == null) {
 			logger.error(
-				"No cached property found for reference ID #%d!%n"
-				, referenceID);
+					"No cached property found for reference ID #%d!%n", referenceID);
 
 			return null;
 		}
 
-		ReferenceTargetProperty property =
-			(ReferenceTargetProperty)
-				Property.createInstance(
-					cachedProperty.getPropertyArt()
-					, propertyName
-					, propertyType);
+		ReferenceTargetProperty property = (ReferenceTargetProperty) Property.createInstance(
+				cachedProperty.getPropertyArt(), propertyName, propertyType);
 
 		cachedProperty.reference.count++;
 
-		//noinspection ConstantConditions
+		// noinspection ConstantConditions
 		property.makeFlatCopyFrom(cachedProperty);
 		property.reference = new Reference(referenceID);
 
 		return property;
 	}
 
-	private TypePair readType () throws IOException {
+	private TypePair readType() throws IOException {
 		int index = readNumber();
 		return types.get(index);
 	}
 
-	private String readName () throws IOException {
+	private String readName() throws IOException {
 		int index = readNumber();
 		return names.get(index);
 	}
