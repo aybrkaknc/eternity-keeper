@@ -161,6 +161,36 @@ wrapper element, where a document type is not allowed — pinned by test, since
 it is an accident of how it is called); zip4j refuses an entry that climbs out
 of its folder.
 
+### Review of the fork (2026-10-27)
+
+A `/thermos` review of everything the fork adds to upstream
+(`upstream/main...HEAD`, 103 commits): a bug pass and a code-quality pass,
+each finding checked against the code before it was kept. The bugs were
+fixed test-first on `fix/import-keeps-partys-belongings`; each test failed
+before its fix.
+
+| Found | Severity | Fixed by |
+|---|---|---|
+| Importing a character over the Watcher replaced the save's stash, quest items, crafting materials, money and camping supplies with the imported character's own game's: they hang off the main character | High | `CharacterImporter.keepPartysBelongings` moves the save's three containers to the newcomer whole and keeps the money and supplies (`1a221e6`). The in-game check found the camping supplies, which the first fix had missed |
+| An import written and then not handed back stayed in the working save | Medium | `ImportCharacter` undoes the step, as `SaveMutationHandler` does (`1a221e6`) |
+| Every Save after the first backs up the file the one before wrote; with one limit of ten for every reason, ten Saves pushed out the only copy of a deleted save | Medium | `SaveBackups.prune` keeps ten of each reason (`338195c`) |
+| An edit whose reopen could not read the save was answered as a success carrying `{"error": ...}`: the edit stayed, and most tabs adopted the error as the save. Open sent an empty save after the error | Medium | `SavedGameOpener.reopen()` throws `Unreadable`; the writers take the step back and answer a failure (`4f238ea`) |
+| A Stronghold Apply skipped what the save could not take, wrote the rest and reported success | Low | Refusals are `WriteRefusedException`s naming the change; the batch goes in whole or not at all (`5166ad0`) |
+| Rename took `saveinfo.xml` out of the player's file and then added the new one, and named the working copy first | Low | A `.renaming` copy is built beside the save and moved over it whole; the working copy follows (`eded601`). Checked in the game's load list |
+
+**Structural findings, not done (need a decision).** None is a bug today;
+each is where the next one is likeliest. By leverage:
+
+| Item | Size | Recommendation |
+|---|---|---|
+| `ImportCharacter` repeats `SaveMutationHandler`'s begin, commit, reopen and undo by hand | Small | Move it onto the shared lifecycle first: two of the bugs above were this copy drifting from the original |
+| About fifteen hand-written walks of the packet tree (follow references, find a component, iterate a collection) | Medium | One shared module; each copy has its own idea of which property kinds to descend into |
+| Eight places update `DeserializedPackets`' object count by hand | Small | Let `DeserializedPackets` set it from what it holds (invariant 5) |
+| Managers answer a refusal with `return false` and a log line, so the page is told "failed, see the log" | Medium | Throw a refusal that says why, as `StrongholdManager` now does; one manager at a time |
+| Five staged tabs each send their Apply and adopt the reply their own way | Small | One `Eternity.Apply.send` (invariants 12, 20, 21 in one place) |
+| `SaveComparison` (2,453 lines), `SavedGameOpener` (1,588), `InventoryManager` (1,453), `InventoryEditor.js` (2,411), `SavedGame.js` (1,290) | Large | Split along the section seams they already have, one file per change |
+| `modern.css` redefines 257 of `ui.css`'s selectors; its `backdrop-filter` and `prefers-reduced-motion` do nothing in Chrome 45 | Medium | Fold it into `ui.css`, with a screenshot sweep in both themes before and after |
+
 ### Proposed, not done (needs a decision)
 
 | Item | Size | Recommendation |
