@@ -26,6 +26,21 @@ Work test-first: write a failing JUnit test, make it pass, refactor.
 - Recent mutation code (`PartyManagerTest`, `CharacterImporterTest`, `SaveGameRenamerTest`) is the style reference for new tests.
 - Final verification: rebuild the jar and exercise the change in the running app against the test environment.
 
+**When the editor will not start ("the editor did not come up").** On
+2026-11-01 every suite failed that way, and so did a build of an earlier
+commit: the editor died in `CefApp` with `UnsatisfiedLinkError: Native
+Library ...\jawt.dll already loaded in another classloader`. The cause was
+`%USERPROFILE%\.accessibility.properties` turning on the Java Access Bridge
+(`assistive_technologies=com.sun.java.accessibility.AccessBridge`, written
+2026-10-31 by something on the machine). AWT then loads the bridge from the
+extension class loader, the bridge loads `jawt.dll` there, and JCEF's own
+`System.loadLibrary("jawt")` fails. That file is the user's accessibility
+setting; leave it. Override it for the run instead:
+`$env:JAVA_TOOL_OPTIONS = "-Djavax.accessibility.assistive_technologies="`
+before `run_suites.py` (an empty list replaces the file's). Start the jar by
+hand with stderr captured to see an error like this one: the suites send the
+editor's output to nowhere.
+
 ## Testing in the game itself (2026-09-14)
 
 Two saves covering every editor feature were built through the editor's own

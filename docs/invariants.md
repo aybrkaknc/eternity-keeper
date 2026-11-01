@@ -143,7 +143,7 @@ has the short version.
     comparison put a saved save beside its original; `compare.py` now checks
     that a Save changes the edit and nothing else.
 20. **Every write of the working save is a step Undo can take back.**
-    `SaveMutationHandler` (and `ImportCharacter`) open a step of
+    `handlers/SaveMutation` (run by every Apply and by the import) opens a step of
     `environment/EditHistory` around the edit, `DeserializedPackets.replace`
     keeps the file it is about to replace (a hard link, or a copy where the
     disk cannot link) while a step is open, and the step is committed on
@@ -202,12 +202,16 @@ has the short version.
     only once. `AnsweredTest.everyHandlerHandsItsWorkOverGuarded` reads the
     handlers' sources; the one exception it knows by name is `CloseWindow`,
     which answers before it hands the closing over. An Apply that dies this
-    way is aborted and put back (`SaveMutationHandler`'s `finally`); one that
+    way is aborted and put back (`SaveMutation`'s `finally`); one that
     was written and then could not be read back is undone, so the save
-    matches what the page still shows. `ImportCharacter` keeps its own copy
+    matches what the page still shows. `ImportCharacter` kept its own copy
     of that lifecycle and had no undo: an import that could not be handed
     back stayed, and the next Save wrote a character the page never showed
     (found by review, 2026-10-27; `anImportThatCannotBeHandedBackIsTakenBack`).
+    Since 2026-11-01 there is one copy: `handlers/SaveMutation` holds the
+    steps, `SaveMutationHandler` runs `mutate` through it, and a handler that
+    cannot be one (the import asks for a file first) runs its edit through
+    it too. A new writer does the same rather than repeating the steps.
     A writer reopens with `SavedGameOpener.reopen()`, which throws
     `Unreadable` instead of answering; the writer takes its step back and
     answers `failure`. `run()` (Open) answers the error codes itself. The

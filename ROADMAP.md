@@ -183,7 +183,7 @@ each is where the next one is likeliest. By leverage:
 
 | Item | Size | Recommendation |
 |---|---|---|
-| `ImportCharacter` repeats `SaveMutationHandler`'s begin, commit, reopen and undo by hand | Small | Move it onto the shared lifecycle first: two of the bugs above were this copy drifting from the original |
+| ~~`ImportCharacter` repeats `SaveMutationHandler`'s begin, commit, reopen and undo by hand~~ | Small | **Done 2026-11-01**: the steps are `handlers/SaveMutation`, which `SaveMutationHandler` and `ImportCharacter` both run their edit through |
 | About fifteen hand-written walks of the packet tree (follow references, find a component, iterate a collection) | Medium | One shared module; each copy has its own idea of which property kinds to descend into |
 | Eight places update `DeserializedPackets`' object count by hand | Small | Let `DeserializedPackets` set it from what it holds (invariant 5) |
 | Managers answer a refusal with `return false` and a log line, so the page is told "failed, see the log" | Medium | Throw a refusal that says why, as `StrongholdManager` now does; one manager at a time |

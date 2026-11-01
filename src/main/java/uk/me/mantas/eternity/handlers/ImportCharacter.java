@@ -27,13 +27,10 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.environment.Environment;
-import uk.me.mantas.eternity.environment.WorkingSave;
 import uk.me.mantas.eternity.save.CharacterImporter;
 import uk.me.mantas.eternity.save.CharacterImporter.ImportConflict;
-import uk.me.mantas.eternity.save.SavedGameOpener;
 import uk.me.mantas.eternity.serializer.WriteRefusedException;
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Optional;
@@ -127,88 +124,29 @@ public class ImportCharacter extends CefMessageRouterHandlerAdapter {
 		doImport(request, callback, chrFile, false);
 	}
 
+	// The import is an edit of the working save like any Apply, run through
+	// the same steps (SaveMutation): a step of the save's history, put back
+	// when refused or failed, taken back when it cannot be handed back.
 	private void doImport (
 		final String request
 		, final CefQueryCallback callback
 		, final String chrFile
 		, final boolean overwrite) {
 
-		final WorkingSave working = Environment.getInstance().state().workingSave();
-		boolean recording = false;
-		try {
-			final CharacterImporter importer = new CharacterImporter(request, chrFile);
+		new SaveMutation(logger, true, (save, json) -> {
+			final CharacterImporter importer;
+			try {
+				importer = new CharacterImporter(request, chrFile);
+			} catch (final FileNotFoundException e) {
+				logger.error("File not found: %s%n", e.getMessage());
+				return "Unable to find your save or CHR file.";
+			}
 
-			// An import is a step of the save's history like any Apply, kept
-			// against the directory it edits: the private copy, made now if
-			// this is the session's first edit.
-			final JSONObject json = new JSONObject(request);
-			final File save = working.forEditing(
-				new File(json.getString("oldSave")), json.getBoolean("savedYet"));
-			working.history().begin(save);
-			recording = true;
-
-			final boolean success = overwrite
+			final boolean imported = overwrite
 				? importer.overwriteCharacter()
 				: importer.importCharacter();
 
-			if (success) {
-				final long step = working.history().commit();
-				recording = false;
-
-				final SavedGameOpener opener = new SavedGameOpener(
-					importer.saveFile().getAbsolutePath()
-					, callback);
-
-				if (step > 0) {
-					opener.with("historyStep", step);
-				}
-
-				try {
-					opener.reopen();
-				} catch (final SavedGameOpener.Unreadable e) {
-					logger.error("Reading %s back after the import failed: %s%n", save.getAbsolutePath(), e.getMessage());
-					takeBack(working, save, step);
-					callback.failure(-1, e.takenBack());
-				} catch (final RuntimeException | StackOverflowError e) {
-					takeBack(working, save, step);
-					throw e;
-				}
-			} else {
-				callback.failure(-1, "Character import failed.");
-			}
-		} catch (JSONException e) {
-			logger.error("Error parsing JSON request: %s%n", request);
-			callback.failure(-1, "Error parsing JSON request.");
-		} catch (FileNotFoundException e) {
-			logger.error("File not found: %s%n", e.getMessage());
-			callback.failure(-1, "Unable to find your save or CHR file.");
-		} catch (WriteRefusedException e) {
-			// The save or the character file could be read only in part, or
-			// the import would have left the save contradicting itself; the
-			// message says which, and nothing was imported.
-			logger.error("Import refused: %s%n", e.getMessage());
-			callback.failure(-1, e.getMessage());
-		} catch (IOException e) {
-			logger.error("%s%n", e.getMessage());
-			callback.failure(-1, "Error modifying temporary MobileObjects.save");
-		} finally {
-			// Refused or failed: whatever it wrote goes back.
-			if (recording) {
-				working.history().abort();
-			}
-		}
-	}
-
-	// Written, and then not handed back: the page is told the import failed
-	// and goes on showing the save as it was, so the save goes back to that
-	// too (as SaveMutationHandler's).
-	private static void takeBack (final WorkingSave working, final File save, final long step) {
-		if (step > 0) {
-			try {
-				working.history().undo(save, step);
-			} catch (final IOException undoing) {
-				logger.error("The import could not be taken back either: %s%n", undoing.getMessage());
-			}
-		}
+			return imported ? null : "Character import failed.";
+		}).run(request, callback);
 	}
 }
