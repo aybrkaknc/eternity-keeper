@@ -145,6 +145,7 @@ public class EternityKeeper extends JFrame {
 		Settings.getInstance().save();
 	}
 
+	// Started through Launcher, which settles what AWT reads as it loads.
 	public static void main (final String[] args) {
 		Locale.setDefault(Locale.UK);
 		final ImageIcon icon = new ImageIcon(EternityKeeper.class.getResource("/icon.png"));

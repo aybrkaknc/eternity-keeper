@@ -21,6 +21,7 @@ package uk.me.mantas.eternity.tests;
 import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 import uk.me.mantas.eternity.EternityKeeper;
+import uk.me.mantas.eternity.Launcher;
 import uk.me.mantas.eternity.environment.Environment;
 
 import java.io.File;
@@ -74,5 +75,37 @@ public class EternityKeeperTest extends TestHarness {
 		final String newContents = FileUtils.readFileToString(log, "UTF-8");
 		assertEquals("1234567\n1234567\n1234567\n", newContents);
 		FileUtils.write(log, oldContents, "UTF-8");
+	}
+
+	private static final String ASSISTIVE = "javax.accessibility.assistive_technologies";
+
+	// With the Java Access Bridge switched on in ~/.accessibility.properties,
+	// AWT loads the bridge, the bridge loads jawt.dll in its own class loader,
+	// and CefApp's load of it fails: the editor died at start with nothing on
+	// screen (found 2026-11-01, when the bridge had been switched on here).
+	// The page is Chromium, which does its own accessibility; the bridge only
+	// serves Java's widgets. So the editor runs without it, unless the user
+	// has named their assistive technologies for it themselves. Launcher does
+	// it, since EternityKeeper is a Frame and its main runs after AWT has read
+	// the setting.
+	@Test
+	public void theAccessBridgeCannotStopTheEditorStarting () {
+		final String before = System.getProperty(ASSISTIVE);
+		try {
+			System.clearProperty(ASSISTIVE);
+			expose(Launcher.class).call("withoutJavaAccessBridge");
+			assertEquals("", System.getProperty(ASSISTIVE));
+
+			System.setProperty(ASSISTIVE, "some.Chosen.Technology");
+			expose(Launcher.class).call("withoutJavaAccessBridge");
+			assertEquals("one set on the command line is kept"
+				, "some.Chosen.Technology", System.getProperty(ASSISTIVE));
+		} finally {
+			if (before == null) {
+				System.clearProperty(ASSISTIVE);
+			} else {
+				System.setProperty(ASSISTIVE, before);
+			}
+		}
 	}
 }

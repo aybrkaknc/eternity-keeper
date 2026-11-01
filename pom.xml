@@ -135,7 +135,7 @@
 						<configuration>
 							<transformers>
 								<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-									<mainClass>uk.me.mantas.eternity.EternityKeeper</mainClass>
+									<mainClass>uk.me.mantas.eternity.Launcher</mainClass>
 								</transformer>
 							</transformers>
 							<!-- The jar runs on Java 8, from the class path: the module
@@ -197,7 +197,7 @@
 						<configuration>
 							<transformers>
 								<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-									<mainClass>uk.me.mantas.eternity.EternityKeeper</mainClass>
+									<mainClass>uk.me.mantas.eternity.Launcher</mainClass>
 								</transformer>
 							</transformers>
 							<!-- The jar runs on Java 8, from the class path: the module

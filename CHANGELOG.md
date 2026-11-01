@@ -33,6 +33,10 @@
   It now goes in whole or not at all, and says which change was refused.
 - Renaming a save replaces the file whole instead of editing it in place, so
   a rename that fails part of the way leaves the save as it was.
+- **The editor would not start at all, with no message, on a computer where
+  the Java Access Bridge is switched on** (screen readers and magnifiers
+  often switch it on). It starts now. The editor's window is a web page
+  with its own accessibility, which the bridge never served.
 
 ## 1.1.0-beta (2026-10-23)
 

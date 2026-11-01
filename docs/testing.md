@@ -35,11 +35,13 @@ Library ...\jawt.dll already loaded in another classloader`. The cause was
 2026-10-31 by something on the machine). AWT then loads the bridge from the
 extension class loader, the bridge loads `jawt.dll` there, and JCEF's own
 `System.loadLibrary("jawt")` fails. That file is the user's accessibility
-setting; leave it. Override it for the run instead:
-`$env:JAVA_TOOL_OPTIONS = "-Djavax.accessibility.assistive_technologies="`
-before `run_suites.py` (an empty list replaces the file's). Start the jar by
-hand with stderr captured to see an error like this one: the suites send the
-editor's output to nowhere.
+setting; leave it. The released editor died the same way for anyone with
+the bridge on, so since 2026-11-01 the jar starts in `Launcher`, which sets
+`javax.accessibility.assistive_technologies` to an empty list before any AWT
+class loads (it cannot be `EternityKeeper.main`: that class is a Frame, and
+Toolkit reads the setting while it initialises). Start the jar by hand with
+stderr captured to see an error like this one: the suites send the editor's
+output to nowhere.
 
 ## Testing in the game itself (2026-09-14)
 
