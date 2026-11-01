@@ -1131,6 +1131,17 @@ the game.
     only**, so a companion's order is flavour, and Pallegina's own
     `FrermasMesCancSuolias` is configured with no dispositions at all. Absent
     catalog degrades to silence; the compiled tables always work.
+  - **An order outlives a class change, and so does its dialogue
+    (read 2026-11-01).** `Conditionals.IsPaladinOrder` compares the order
+    field and nothing else, and not one of the 53 conversation nodes that test
+    an order also requires the Paladin class (`px2_05_cv_bleakwalkers` node 57
+    tests "not a Bleak Walker AND not a Paladin": the line for everyone
+    else). Nothing resets the order on load; only character creation and the
+    console's `SetPaladinOrder` write it. The panel hides the Order dropdown
+    for a non-paladin but leaves the value alone, so a Watcher made a Paladin
+    of an order and then given another class keeps the order's dialogue. What
+    goes is the order's disposition bonus: `Religion` applies it only while
+    `CharacterClass == Paladin`. Not yet checked in the game itself.
   - **Gender has no mechanical effect** — `StringTableManager.GetCharacterName(
     DisplayName, Gender)` is the only thing that reads it.
   - The panel closes with **"On the character sheet"**: the six attributes and
