@@ -204,6 +204,24 @@ public class SaveModelTest extends TestHarness {
 		assertNotEquals("Player_Newcomer", ((ObjectPersistencePacket) calisca.property().obj).Parent);
 	}
 
+	@Test
+	public void aGlobalVariableIsReadAndWrittenAsTheTypeItHolds () throws Exception {
+		final File file = fixture();
+		final DeserializedPackets packets = read(file);
+		final SaveModel save = SaveModel.of(packets);
+
+		final Object before = save.globalVariable("nDuranceQuestState").get();
+		assertTrue(before instanceof Integer);
+		assertFalse(save.globalVariable("no_such_global").isPresent());
+
+		save.setGlobalVariable("nDuranceQuestState", 8);
+		assertRefused(() -> save.setGlobalVariable("nDuranceQuestState", true), "nDuranceQuestState");
+		assertRefused(() -> save.setGlobalVariable("no_such_global", 1), "no_such_global");
+		packets.replace(file);
+
+		assertEquals(8, SaveModel.of(read(file)).globalVariable("nDuranceQuestState").get());
+	}
+
 	// Real saves hold packets with no ObjectName, and the odd entry that is
 	// not a game object at all.
 	@Test

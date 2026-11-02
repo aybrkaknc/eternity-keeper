@@ -19,7 +19,10 @@
 package uk.me.mantas.eternity.save.model;
 
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
+import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
+import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -77,6 +80,40 @@ public final class SaveModel {
 	/** {@code Global(Clone)}: the world's own state, among it the game's settings. */
 	public Optional<SaveObject> worldGlobal () {
 		return first(object -> named(object, "Global(Clone)") || "Global".equals(object.name()));
+	}
+
+	/**
+	 * One of the game's global variables (GlobalVariables' {@code m_data} on
+	 * InGameGlobal). One that is not in the save reads as 0 in the game.
+	 */
+	public Optional<Object> globalVariable (final String name) {
+		return globalVariableEntry(name)
+			.filter(entry -> entry instanceof SimpleProperty)
+			.map(entry -> ((SimpleProperty) entry).value);
+	}
+
+	/**
+	 * Writes a global variable the save holds, as the type it holds.
+	 *
+	 * @throws WriteRefusedException when the save does not hold it, or the
+	 *         value cannot be its type; nothing is changed
+	 */
+	public void setGlobalVariable (final String name, final Object value) throws WriteRefusedException {
+		final Optional<Property> entry = globalVariableEntry(name);
+		if (!entry.isPresent() || !(entry.get() instanceof SimpleProperty)) {
+			throw new WriteRefusedException(
+				"The save has no global variable '" + name + "' to set. Nothing was changed.");
+		}
+
+		TypedValue.write((SimpleProperty) entry.get(), value, "The global variable " + name);
+	}
+
+	private Optional<Property> globalVariableEntry (final String name) {
+		return inGameGlobal()
+			.flatMap(global -> global.component("GlobalVariables"))
+			.flatMap(globals -> globals.variable("m_data"))
+			.filter(data -> data instanceof DictionaryProperty)
+			.flatMap(data -> ((DictionaryProperty) data).findEntry(name));
 	}
 
 	/** The object with this ObjectID, in whatever case either is written. */

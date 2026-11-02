@@ -19,20 +19,18 @@
 
 package uk.me.mantas.eternity.save;
 
-import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.environment.Environment;
-import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.game.StrongholdUpgrade;
+import uk.me.mantas.eternity.save.model.Component;
+import uk.me.mantas.eternity.save.model.SaveModel;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.TypePair;
 import uk.me.mantas.eternity.serializer.WriteRefusedException;
 import uk.me.mantas.eternity.serializer.properties.CollectionProperty;
 import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
-import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
-import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 
 import java.io.File;
 import java.io.IOException;
@@ -139,9 +137,9 @@ public class StrongholdManager {
 			return false;
 		}
 
-		return findStronghold(deserialized.get())
-			.flatMap(s -> s.<Property>findEntry("SerializedIsActivated"))
-			.map(p -> Boolean.TRUE.equals(p.obj))
+		return stronghold(SaveModel.of(deserialized.get()))
+			.flatMap(stronghold -> stronghold.get("SerializedIsActivated"))
+			.map(Boolean.TRUE::equals)
 			.orElse(false);
 	}
 
@@ -164,7 +162,8 @@ public class StrongholdManager {
 			return false;
 		}
 
-		final Optional<DictionaryProperty> stronghold = findStronghold(deserialized.get());
+		final SaveModel save = SaveModel.of(deserialized.get());
+		final Optional<Component> stronghold = stronghold(save);
 		if (!stronghold.isPresent()) {
 			logger.error("Save has no Stronghold component.%n");
 			return false;
@@ -173,9 +172,8 @@ public class StrongholdManager {
 		// Activation has to be settled before anything else: an upgrade on a
 		// stronghold nobody owns is meaningless, and the ACTIVATE change in
 		// this very batch may be what grants it.
-		boolean activated = stronghold.get()
-			.<Property>findEntry("SerializedIsActivated")
-			.map(p -> Boolean.TRUE.equals(p.obj))
+		boolean activated = stronghold.get().get("SerializedIsActivated")
+			.map(Boolean.TRUE::equals)
 			.orElse(false);
 
 		boolean changed = false;
@@ -199,11 +197,11 @@ public class StrongholdManager {
 
 			switch (change.kind) {
 				case ADD_UPGRADE:
-					changed |= buildUpgrade(deserialized.get(), stronghold.get(), change.name);
+					changed |= buildUpgrade(save, stronghold.get(), change.name);
 					break;
 
 				case REMOVE_UPGRADE:
-					changed |= destroyUpgrade(deserialized.get(), stronghold.get(), change.name);
+					changed |= destroyUpgrade(save, stronghold.get(), change.name);
 					break;
 
 				case SET_NUMBER:
@@ -215,11 +213,11 @@ public class StrongholdManager {
 					break;
 
 				case DISMISS_HIRELING:
-					changed |= dismissHireling(deserialized.get(), stronghold.get(), change.name);
+					changed |= dismissHireling(save, stronghold.get(), change.name);
 					break;
 
 				case RELEASE_PRISONER:
-					changed |= releasePrisoner(deserialized.get(), stronghold.get(), change.name);
+					changed |= releasePrisoner(save, stronghold.get(), change.name);
 					break;
 
 				default:
@@ -238,8 +236,8 @@ public class StrongholdManager {
 	// Mirrors Stronghold.CompleteBuildingUpgrade: record it, pay the
 	// adjustments, raise the global.
 	private boolean buildUpgrade (
-		final DeserializedPackets packets
-		, final DictionaryProperty stronghold
+		final SaveModel save
+		, final Component stronghold
 		, final String key) throws WriteRefusedException {
 
 		final Optional<StrongholdCatalog.Upgrade> upgrade =
@@ -266,14 +264,14 @@ public class StrongholdManager {
 
 		adjust(stronghold, "Prestige", upgrade.get().prestige);
 		adjust(stronghold, "Security", upgrade.get().security);
-		setUpgradeGlobal(packets, upgrade.get(), 1);
+		setUpgradeGlobal(save, upgrade.get(), 1);
 		return true;
 	}
 
 	// Mirrors Stronghold.DestroyUpgrade, which is the same steps in reverse.
 	private boolean destroyUpgrade (
-		final DeserializedPackets packets
-		, final DictionaryProperty stronghold
+		final SaveModel save
+		, final Component stronghold
 		, final String key) throws WriteRefusedException {
 
 		final Optional<StrongholdCatalog.Upgrade> upgrade =
@@ -304,7 +302,7 @@ public class StrongholdManager {
 
 		adjust(stronghold, "Prestige", -upgrade.get().prestige);
 		adjust(stronghold, "Security", -upgrade.get().security);
-		setUpgradeGlobal(packets, upgrade.get(), 0);
+		setUpgradeGlobal(save, upgrade.get(), 0);
 		return true;
 	}
 
@@ -318,8 +316,8 @@ public class StrongholdManager {
 	// The numbers are the entry's own: the game serialized them from that same
 	// configured hireling.
 	private boolean dismissHireling (
-		final DeserializedPackets packets
-		, final DictionaryProperty stronghold
+		final SaveModel save
+		, final Component stronghold
 		, final String hiredGlobal) throws WriteRefusedException {
 
 		final Optional<Property> hireling =
@@ -334,7 +332,7 @@ public class StrongholdManager {
 			adjust(stronghold, "Security", -number(hireling.get(), "SecurityAdjustment"));
 		}
 
-		setGlobal(packets, hiredGlobal, 0);
+		setGlobal(save, hiredGlobal, 0);
 		return true;
 	}
 
@@ -343,8 +341,8 @@ public class StrongholdManager {
 	// PrisonerRequest visitor asking after them is left alone, as the game
 	// leaves it; ConfirmPrisoner() simply finds nobody to hand over.
 	private boolean releasePrisoner (
-		final DeserializedPackets packets
-		, final DictionaryProperty stronghold
+		final SaveModel save
+		, final Component stronghold
 		, final String global) throws WriteRefusedException {
 
 		final Optional<Property> prisoner =
@@ -354,14 +352,14 @@ public class StrongholdManager {
 			throw refused("No prisoner '" + global + "' is in this save's stronghold to release.");
 		}
 
-		setGlobal(packets, global, 0);
+		setGlobal(save, global, 0);
 		return true;
 	}
 
 	// Takes the first entry of a list of objects whose field has that value
 	// out of the list, as List.Remove does in the game.
 	private static Optional<Property> removeEntry (
-		final DictionaryProperty stronghold
+		final Component stronghold
 		, final String list
 		, final String key
 		, final String value) {
@@ -370,7 +368,7 @@ public class StrongholdManager {
 			return Optional.empty();
 		}
 
-		final Optional<Property> entry = stronghold.findEntry(list);
+		final Optional<Property> entry = stronghold.variable(list);
 		if (!entry.isPresent() || !(entry.get() instanceof CollectionProperty)) {
 			logger.error("Stronghold has no %s list.%n", list);
 			return Optional.empty();
@@ -426,19 +424,20 @@ public class StrongholdManager {
 	}
 
 	private static void adjust (
-		final DictionaryProperty stronghold, final String variable, final int delta) {
+		final Component stronghold, final String variable, final int delta)
+		throws WriteRefusedException {
 
 		if (delta == 0) {
 			return;
 		}
 
-		final Optional<Property> entry = stronghold.findEntry(variable);
-		if (!entry.isPresent() || !(entry.get().obj instanceof Integer)) {
+		final Optional<Object> current = stronghold.get(variable);
+		if (!current.isPresent() || !(current.get() instanceof Integer)) {
 			logger.error("Stronghold has no '%s' to adjust.%n", variable);
 			return;
 		}
 
-		Property.update(entry.get(), ((Integer) entry.get().obj) + delta);
+		stronghold.set(variable, (Integer) current.get() + delta);
 	}
 
 	private static WriteRefusedException refused (final String why) {
@@ -446,10 +445,10 @@ public class StrongholdManager {
 	}
 
 	private static boolean setEntry (
-		final DictionaryProperty stronghold, final String variable, final Object value)
+		final Component stronghold, final String variable, final Object value)
 		throws WriteRefusedException {
 
-		final Optional<Property> entry = stronghold.findEntry(variable);
+		final Optional<Property> entry = stronghold.variable(variable);
 		if (!entry.isPresent()) {
 			throw refused("The stronghold in this save has no '" + variable + "' to set.");
 		}
@@ -458,7 +457,8 @@ public class StrongholdManager {
 			return false;
 		}
 
-		return Property.update(entry.get(), value);
+		stronghold.set(variable, value);
+		return true;
 	}
 
 	/**
@@ -468,37 +468,30 @@ public class StrongholdManager {
 	 * does not reflect.
 	 */
 	private static void setUpgradeGlobal (
-		final DeserializedPackets packets
+		final SaveModel save
 		, final StrongholdCatalog.Upgrade upgrade
-		, final int value) {
+		, final int value) throws WriteRefusedException {
 
-		setGlobal(packets, upgrade.global, value);
+		setGlobal(save, upgrade.global, value);
 	}
 
 	// A global that is not in the save at all reads as 0 in the game, so one
 	// missing is left missing rather than added.
 	private static void setGlobal (
-		final DeserializedPackets packets
+		final SaveModel save
 		, final String name
-		, final int value) {
+		, final int value) throws WriteRefusedException {
 
 		if (name == null || name.isEmpty()) {
 			return;
 		}
 
-		final Optional<DictionaryProperty> globals = findGlobals(packets);
-		if (!globals.isPresent()) {
-			logger.error("Save has no GlobalVariables to update.%n");
-			return;
-		}
-
-		final Optional<Property> entry = globals.get().findEntry(name);
-		if (!entry.isPresent()) {
+		if (!save.globalVariable(name).isPresent()) {
 			logger.error("Global '%s' is not in this save; leaving it alone.%n", name);
 			return;
 		}
 
-		Property.update(entry.get(), value);
+		save.setGlobalVariable(name, value);
 	}
 
 	private Optional<DeserializedPackets> read () throws IOException {
@@ -506,10 +499,8 @@ public class StrongholdManager {
 			.forFile(new File(saveDirectory, "MobileObjects.save")).deserialize();
 	}
 
-	private static Optional<CollectionProperty> upgradeList (
-		final DictionaryProperty stronghold) {
-
-		final Optional<Property> entry = stronghold.findEntry("m_upgradesBuilt");
+	private static Optional<CollectionProperty> upgradeList (final Component stronghold) {
+		final Optional<Property> entry = stronghold.variable("m_upgradesBuilt");
 		if (!entry.isPresent() || !(entry.get() instanceof CollectionProperty)) {
 			logger.error("Stronghold has no m_upgradesBuilt list.%n");
 			return Optional.empty();
@@ -518,45 +509,7 @@ public class StrongholdManager {
 		return Optional.of((CollectionProperty) entry.get());
 	}
 
-	private static Optional<DictionaryProperty> findStronghold (
-		final DeserializedPackets packets) {
-
-		return findOnGlobal(packets, "Stronghold")
-			.flatMap(c -> c.<DictionaryProperty>findProperty("Variables"));
-	}
-
-	private static Optional<DictionaryProperty> findGlobals (
-		final DeserializedPackets packets) {
-
-		return findOnGlobal(packets, "GlobalVariables")
-			.flatMap(c -> c.<DictionaryProperty>findProperty("Variables"))
-			.flatMap(v -> v.<DictionaryProperty>findEntry("m_data"));
-	}
-
-	private static Optional<ComplexProperty> findOnGlobal (
-		final DeserializedPackets packets, final String component) {
-
-		for (final Property property : packets.getPackets()) {
-			if (!(property.obj instanceof ObjectPersistencePacket)
-				|| !(property instanceof ComplexProperty)) {
-
-				continue;
-			}
-
-			final String name = ((ObjectPersistencePacket) property.obj).ObjectName;
-			if (name == null || !name.startsWith("InGameGlobal")) {
-				continue;
-			}
-
-			final Optional<ComplexProperty> found = ((ComplexProperty) property)
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(c -> EKUtils.findSubComponent(c, component));
-
-			if (found.isPresent()) {
-				return found;
-			}
-		}
-
-		return Optional.empty();
+	private static Optional<Component> stronghold (final SaveModel save) {
+		return save.inGameGlobal().flatMap(global -> global.component("Stronghold"));
 	}
 }
