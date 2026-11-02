@@ -22,6 +22,8 @@ package uk.me.mantas.eternity.save;
 import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
+import uk.me.mantas.eternity.save.model.Component;
+import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.TypePair;
@@ -702,19 +704,22 @@ public class InventoryManager {
 	 */
 	private static Optional<String> boundTo (final List<Property> packets, final String item) {
 		return EKUtils.findPacketById(packets, item)
-			.flatMap(p -> PartyManager.findComponentProperty(p, "EquipmentSoulbind"))
-			.<DictionaryProperty>flatMap(c -> c.findProperty("Variables"))
-			.flatMap(v -> v.<Property>findEntry("BoundGuid"))
+			.flatMap(SaveObject::of)
+			.flatMap(o -> o.component("EquipmentSoulbind"))
+			.flatMap(c -> c.variable("BoundGuid"))
 			.map(p -> p.obj == null ? "" : p.obj.toString())
 			.filter(guid -> !guid.isEmpty() && !EMPTY_GUID.equals(guid));
 	}
 
 	private static int intStat (final Property character, final String stat) {
-		return PartyManager.findComponentProperty(character, "CharacterStats")
-			.<DictionaryProperty>flatMap(c -> c.findProperty("Variables"))
-			.flatMap(v -> v.<Property>findEntry(stat))
+		return statsOf(character)
+			.flatMap(c -> c.variable(stat))
 			.map(p -> p.obj instanceof Integer ? (Integer) p.obj : 0)
 			.orElse(0);
+	}
+
+	private static Optional<Component> statsOf (final Property character) {
+		return SaveObject.of(character).flatMap(o -> o.component("CharacterStats"));
 	}
 
 	/**
@@ -723,9 +728,8 @@ public class InventoryManager {
 	 * registry's, then the one inside the object name.
 	 */
 	static String characterName (final Property character) {
-		final Optional<String> override = PartyManager.findComponentProperty(character, "CharacterStats")
-			.<DictionaryProperty>flatMap(c -> c.findProperty("Variables"))
-			.flatMap(v -> v.<Property>findEntry("OverrideName"))
+		final Optional<String> override = statsOf(character)
+			.flatMap(c -> c.variable("OverrideName"))
 			.map(p -> p.obj == null ? "" : p.obj.toString().trim())
 			.filter(name -> !name.isEmpty());
 

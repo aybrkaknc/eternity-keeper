@@ -27,9 +27,13 @@ import uk.me.mantas.eternity.game.AIController.AggressionType;
 import uk.me.mantas.eternity.game.CompanionNames.Companions;
 import uk.me.mantas.eternity.game.ComponentPersistencePacket;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
+import uk.me.mantas.eternity.save.model.Component;
+import uk.me.mantas.eternity.save.model.SaveModel;
+import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.CSharpCollection;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.TypePair;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
 import uk.me.mantas.eternity.serializer.properties.*;
 
 import java.io.File;
@@ -105,16 +109,17 @@ public class PartyManager {
 		final List<Property> packets =
 			new ArrayList<>(deserialized.get().getPackets());
 
-		final Optional<Property> player = findPlayer(packets);
+		final SaveModel save = SaveModel.of(packets);
+		final Optional<SaveObject> player = save.player();
 		if (!player.isPresent()) {
 			logger.error("Unable to find player character.%n");
 			return false;
 		}
 
 		final Optional<CollectionProperty> storedGuids =
-			findStrongholdList(packets, "SerializedStoredGuids");
+			findStrongholdList(save, "SerializedStoredGuids");
 		final Optional<CollectionProperty> storedAnimalGuids =
-			findStrongholdList(packets, "SerializedStoredAnimalCompanionGuids");
+			findStrongholdList(save, "SerializedStoredAnimalCompanionGuids");
 
 		if (!storedGuids.isPresent()) {
 			logger.error("Save has no Stronghold data; cannot manage the party.%n");
@@ -135,21 +140,20 @@ public class PartyManager {
 					continue;
 				}
 
-				final Optional<Property> character =
-					findCharacterByID(packets, change.getKey());
+				final Optional<SaveObject> character =
+					findCharacterByID(save, change.getKey());
 
 				if (!character.isPresent()) {
 					logger.error("No character with ObjectID '%s'.%n", change.getKey());
 					return false;
 				}
 
-				final ObjectPersistencePacket packet = unwrap(character.get());
-				if (packet.ObjectName.startsWith("Player_")) {
+				if (character.get().isPlayer()) {
 					logger.error("The main character cannot leave the party.%n");
 					return false;
 				}
 
-				if (recruitPass == isInParty(character.get())) {
+				if (recruitPass == isInParty(character.get().property())) {
 					continue; // Already in the desired state.
 				}
 
@@ -198,32 +202,27 @@ public class PartyManager {
 
 	private boolean dismiss (
 		final List<Property> packets
-		, final Property character
-		, final Property player
+		, final SaveObject character
+		, final SaveObject player
 		, final CollectionProperty storedGuids
 		, final CollectionProperty storedAnimalGuids
-		, final Deque<Anchor> vacatedSpots) {
+		, final Deque<Anchor> vacatedSpots) throws WriteRefusedException {
 
-		final ObjectPersistencePacket packet = unwrap(character);
-		final ObjectPersistencePacket playerPacket = unwrap(player);
-
-		if (!removeComponent(character, "PartyMemberAI")) {
-			logger.error("'%s' has no PartyMemberAI component.%n", packet.ObjectName);
+		final Optional<Component> ai = character.component("PartyMemberAI");
+		if (!ai.isPresent()) {
+			logger.error("'%s' has no PartyMemberAI component.%n", character.name());
 			return false;
 		}
 
+		character.remove(ai.get());
+
 		// Remember the exact spot this character stood on; a recruit in the
 		// same operation will take their place.
-		if (packet.LevelName != null && packet.Location != null) {
-			final Vector3 vacated = new Vector3();
-			vacated.x = packet.Location.x;
-			vacated.y = packet.Location.y;
-			vacated.z = packet.Location.z;
-			vacatedSpots.addLast(new Anchor(packet.LevelName, vacated));
+		if (character.levelName() != null) {
+			vacatedSpots.addLast(new Anchor(character.levelName(), character.location()));
 		}
 
-		addComponent(character
-			, buildAIPackageController(AISummonType.NotSummoned, null));
+		character.add(buildAIPackageController(AISummonType.NotSummoned, null));
 
 		final int rosterIndex = storedGuids.items.size();
 		final Vector3 spot = new Vector3();
@@ -231,32 +230,29 @@ public class PartyManager {
 		spot.y = STRONGHOLD_Y;
 		spot.z = STRONGHOLD_Z - (rosterIndex / 3) * 1.2f;
 
-		if (!moveCharacter(character, STRONGHOLD_LEVEL, spot)) {
-			return false;
-		}
+		character.moveTo(STRONGHOLD_LEVEL, spot);
 
 		// A stored character is "packed" (not instantiated in a level)
 		// unless the save was made in the very level they are stored in.
 		// The game only spawns unpacked objects, so this flag decides
 		// whether a character actually appears in the world.
-		Property.update(character, "Packed"
-			, !STRONGHOLD_LEVEL.equals(playerPacket.LevelName));
+		character.set("Packed", !STRONGHOLD_LEVEL.equals(player.levelName()));
 
 		// Rangers: their animal companion is stored along with them, exactly
 		// like the game does it.
 		UUID animalGuid = ZERO_GUID;
-		final Optional<Property> pet = findPartyPet(packets, packet.ObjectID);
+		final Optional<SaveObject> pet = findPartyPet(packets, character.id());
 		if (pet.isPresent() && storedAnimalGuids != null) {
-			animalGuid = dismissPet(packets, pet.get(), packet, playerPacket.LevelName
+			animalGuid = dismissPet(packets, pet.get(), character, player.levelName()
 				, storedAnimalGuids, spot);
 		} else if (pet.isPresent()) {
 			logger.error("Save has no stored-animal list; leaving '%s' in the party.%n"
-				, unwrap(pet.get()).ObjectName);
+				, pet.get().name());
 		}
 
 		final UUID recordGuid = UUID.randomUUID();
 		packets.add(buildStoredRecord(
-			recordGuid, packet, playerPacket.LevelName, animalGuid, true));
+			recordGuid, unwrap(character), player.levelName(), animalGuid, true));
 		addGuidToList(storedGuids, recordGuid);
 
 		return true;
@@ -264,48 +260,46 @@ public class PartyManager {
 
 	private UUID dismissPet (
 		final List<Property> packets
-		, final Property pet
-		, final ObjectPersistencePacket owner
+		, final SaveObject pet
+		, final SaveObject owner
 		, final String currentLevel
 		, final CollectionProperty storedAnimalGuids
-		, final Vector3 ownerSpot) {
+		, final Vector3 ownerSpot) throws WriteRefusedException {
 
-		final ObjectPersistencePacket petPacket = unwrap(pet);
-
-		removeComponent(pet, "PartyMemberAI");
+		final Optional<Component> ai = pet.component("PartyMemberAI");
+		if (ai.isPresent()) {
+			pet.remove(ai.get());
+		}
 
 		// A stored pet keeps its summon type and its link to the owner
 		// (observed in real saves).
-		addComponent(pet, buildAIPackageController(
-			AISummonType.AnimalCompanion, UUID.fromString(owner.ObjectID)));
+		pet.add(buildAIPackageController(
+			AISummonType.AnimalCompanion, UUID.fromString(owner.id())));
 
 		final Vector3 spot = new Vector3();
 		spot.x = ownerSpot.x - 0.7f;
 		spot.y = ownerSpot.y;
 		spot.z = ownerSpot.z - 0.7f;
-		moveCharacter(pet, STRONGHOLD_LEVEL, spot);
-		Property.update(pet, "Packed", !STRONGHOLD_LEVEL.equals(currentLevel));
+		pet.moveTo(STRONGHOLD_LEVEL, spot);
+		pet.set("Packed", !STRONGHOLD_LEVEL.equals(currentLevel));
 
 		final UUID recordGuid = UUID.randomUUID();
 		packets.add(buildStoredRecord(
-			recordGuid, petPacket, currentLevel, ZERO_GUID, false));
+			recordGuid, unwrap(pet), currentLevel, ZERO_GUID, false));
 		addGuidToList(storedAnimalGuids, recordGuid);
 
-		return UUID.fromString(petPacket.ObjectID);
+		return UUID.fromString(pet.id());
 	}
 
 	// -------------------- recruit --------------------
 
 	private boolean recruit (
 		final List<Property> packets
-		, final Property character
-		, final Property player
+		, final SaveObject character
+		, final SaveObject player
 		, final CollectionProperty storedGuids
 		, final CollectionProperty storedAnimalGuids
-		, final Anchor vacated) {
-
-		final ObjectPersistencePacket packet = unwrap(character);
-		final ObjectPersistencePacket playerPacket = unwrap(player);
+		, final Anchor vacated) throws WriteRefusedException {
 
 		final int slot = firstFreeSlot(packets);
 		if (slot < 0) {
@@ -313,40 +307,43 @@ public class PartyManager {
 			return false;
 		}
 
-		removeComponent(character, "AIPackageController");
-		addComponent(character, buildPartyMemberAI(
-			slot, false, AISummonType.NotSummoned, null));
+		final Optional<Component> controller = character.component("AIPackageController");
+		if (controller.isPresent()) {
+			character.remove(controller.get());
+		}
+
+		character.add(buildPartyMemberAI(slot, false, AISummonType.NotSummoned, null));
 
 		// Take the exact spot of a character dismissed in the same operation
 		// when there is one; otherwise stand on the player, which is always a
 		// valid position. Made-up offsets risk landing outside the walkable
 		// area, in which case the game silently fails to spawn the character.
 		final String levelName = vacated != null
-			? vacated.levelName : playerPacket.LevelName;
+			? vacated.levelName : player.levelName();
 		final Vector3 spot = vacated != null
-			? vacated.location : playerPacket.Location;
+			? vacated.location : player.location();
 
-		if (!moveCharacter(character, levelName, spot)) {
-			return false;
-		}
+		character.moveTo(levelName, spot);
 
 		// Party members are always unpacked: they live in the same level as
 		// the player and the game must instantiate them on load.
-		Property.update(character, "Packed", false);
+		character.set("Packed", false);
 
 		// Retire the roster record and follow it to any stored animal
 		// companion (rangers).
-		final Optional<Property> record = findStoredRecord(packets, packet.ObjectID);
+		final Optional<SaveObject> record = findStoredRecord(packets, character.id());
 		if (record.isPresent()) {
-			final ObjectPersistencePacket recordPacket = unwrap(record.get());
-			final UUID animalGuid = storedInfoAnimalGuid(recordPacket);
+			final Optional<UUID> animalGuid = record.get().component("StoredCharacterInfo")
+				.flatMap(info -> info.get("AnimalCompanionGUID"))
+				.filter(guid -> guid instanceof UUID)
+				.map(guid -> (UUID) guid);
 
-			packets.remove(record.get());
-			removeGuidFromList(storedGuids, recordPacket.ObjectID);
+			packets.remove(record.get().property());
+			removeGuidFromList(storedGuids, record.get().id());
 
-			if (animalGuid != null && !ZERO_GUID.equals(animalGuid)) {
-				recruitAnimalCompanion(packets, animalGuid.toString()
-					, UUID.fromString(packet.ObjectID), slot
+			if (animalGuid.isPresent() && !ZERO_GUID.equals(animalGuid.get())) {
+				recruitAnimalCompanion(packets, animalGuid.get().toString()
+					, UUID.fromString(character.id()), slot
 					, levelName, spot, storedAnimalGuids);
 			}
 		}
@@ -361,9 +358,12 @@ public class PartyManager {
 		, final int ownerSlot
 		, final String levelName
 		, final Vector3 ownerSpot
-		, final CollectionProperty storedAnimalGuids) {
+		, final CollectionProperty storedAnimalGuids) throws WriteRefusedException {
 
-		final Optional<Property> animal = findByObjectID(packets, animalID);
+		final Optional<SaveObject> animal = SaveModel.of(packets).objects().stream()
+			.filter(object -> animalID.equals(object.id()) && !isStoredRecord(object))
+			.findFirst();
+
 		if (!animal.isPresent()) {
 			logger.error("Stored animal companion '%s' not found.%n", animalID);
 			return;
@@ -372,73 +372,55 @@ public class PartyManager {
 		// In-party pets sit in slot 6 + their owner's slot with
 		// Secondary=true (observed in real saves: Sagani in slot 5, her fox
 		// in slot 11). They stand on their owner's (known-valid) spot.
-		removeComponent(animal.get(), "AIPackageController");
-		addComponent(animal.get(), buildPartyMemberAI(
+		final Optional<Component> controller = animal.get().component("AIPackageController");
+		if (controller.isPresent()) {
+			animal.get().remove(controller.get());
+		}
+
+		animal.get().add(buildPartyMemberAI(
 			MAX_PARTY_SIZE + ownerSlot, true, AISummonType.AnimalCompanion, ownerGuid));
 
-		moveCharacter(animal.get(), levelName, ownerSpot);
-		Property.update(animal.get(), "Packed", false);
+		animal.get().moveTo(levelName, ownerSpot);
+		animal.get().set("Packed", false);
 
-		final Optional<Property> animalRecord = findStoredRecord(packets, animalID);
+		final Optional<SaveObject> animalRecord = findStoredRecord(packets, animalID);
 		if (animalRecord.isPresent()) {
-			final String recordID = unwrap(animalRecord.get()).ObjectID;
-			packets.remove(animalRecord.get());
+			packets.remove(animalRecord.get().property());
 			if (storedAnimalGuids != null) {
-				removeGuidFromList(storedAnimalGuids, recordID);
+				removeGuidFromList(storedAnimalGuids, animalRecord.get().id());
 			}
 		}
 	}
 
-	// Finds a party character's living animal companion: a packet whose
+	// Finds a party character's living animal companion: an object whose
 	// PartyMemberAI declares SummonType=AnimalCompanion and names the
 	// character as its summoner.
-	private Optional<Property> findPartyPet (
+	private Optional<SaveObject> findPartyPet (
 		final List<Property> packets
 		, final String ownerID) {
 
-		for (final Property property : packets) {
-			if (!isPacket(property) || unwrap(property).ObjectName.endsWith("_stored")) {
+		for (final SaveObject object : SaveModel.of(packets).objects()) {
+			if (isStoredRecord(object)) {
 				continue;
 			}
 
-			final Optional<ComplexProperty> ai =
-				findComponentProperty(property, "PartyMemberAI");
+			final Optional<Component> ai = object.component("PartyMemberAI");
 			if (!ai.isPresent()) {
 				continue;
 			}
 
-			final Object summonType = componentVariable(ai.get(), "SummonType");
-			final Object summoner = componentVariable(ai.get(), "Summoner");
+			final Object summonType = ai.get().get("SummonType").orElse(null);
+			final Object summoner = ai.get().get("Summoner").orElse(null);
 
-			if (summonType instanceof AISummonType
-				&& summonType == AISummonType.AnimalCompanion
+			if (summonType == AISummonType.AnimalCompanion
 				&& summoner != null
 				&& ownerID.equals(summoner.toString())) {
 
-				return Optional.of(property);
+				return Optional.of(object);
 			}
 		}
 
 		return Optional.empty();
-	}
-
-	// Reads a variable value from a component's property tree.
-	private Object componentVariable (final ComplexProperty component, final String name) {
-		final Optional<Property> variables = Property.find(component, "Variables");
-		if (!variables.isPresent() || !(variables.get() instanceof DictionaryProperty)) {
-			return null;
-		}
-
-		for (final Map.Entry<Property, Property> entry
-			: ((DictionaryProperty) variables.get()).items) {
-
-			final Object key = ((SimpleProperty) entry.getKey()).value;
-			if (name.equals(key) && entry.getValue() instanceof SimpleProperty) {
-				return ((SimpleProperty) entry.getValue()).value;
-			}
-		}
-
-		return null;
 	}
 
 	// -------------------- component builders --------------------
@@ -674,73 +656,7 @@ public class PartyManager {
 		}
 	}
 
-	// -------------------- tree surgery helpers --------------------
-
-	static Optional<SingleDimensionalArrayProperty> componentArray (final Property root) {
-		return Property.find(root, "ComponentPackets")
-			.filter(p -> p instanceof SingleDimensionalArrayProperty)
-			.map(p -> (SingleDimensionalArrayProperty) p);
-	}
-
-	static Optional<ComplexProperty> findComponentProperty (
-		final Property root
-		, final String typeString) {
-
-		final Optional<SingleDimensionalArrayProperty> array = componentArray(root);
-		if (!array.isPresent()) {
-			return Optional.empty();
-		}
-
-		for (final Object itemObj : array.get().items) {
-			if (!(itemObj instanceof ComplexProperty)) {
-				continue;
-			}
-
-			final ComplexProperty item = (ComplexProperty) itemObj;
-			final Optional<Property> type = Property.find(item, "TypeString");
-			if (type.isPresent()
-				&& typeString.equals(((SimpleProperty) type.get()).value)) {
-
-				return Optional.of(item);
-			}
-		}
-
-		return Optional.empty();
-	}
-
-	static boolean removeComponent (final Property root, final String typeString) {
-		final Optional<ComplexProperty> component = findComponentProperty(root, typeString);
-		if (!component.isPresent()) {
-			return false;
-		}
-
-		componentArray(root).get().items.remove(component.get());
-		return true;
-	}
-
-	static void addComponent (final Property root, final ComplexProperty component) {
-		componentArray(root).ifPresent(array -> array.items.add(component));
-	}
-
-	private boolean moveCharacter (
-		final Property character
-		, final String levelName
-		, final Vector3 location) {
-
-		if (!Property.update(character, "LevelName", levelName)) {
-			return false;
-		}
-
-		final Optional<Property> locationProperty = Property.find(character, "Location");
-		if (!locationProperty.isPresent()) {
-			logger.error("Character has no Location property.%n");
-			return false;
-		}
-
-		return Property.update(locationProperty.get(), "x", location.x)
-			&& Property.update(locationProperty.get(), "y", location.y)
-			&& Property.update(locationProperty.get(), "z", location.z);
-	}
+	// -------------------- roster lists --------------------
 
 	private void addGuidToList (final CollectionProperty list, final UUID guid) {
 		final SimpleProperty item =
@@ -771,136 +687,53 @@ public class PartyManager {
 
 	// -------------------- lookups --------------------
 
-	private ObjectPersistencePacket unwrap (final Property property) {
-		return (ObjectPersistencePacket) property.obj;
-	}
-
-	private boolean isPacket (final Property property) {
-		return property.obj instanceof ObjectPersistencePacket
-			&& unwrap(property).ObjectName != null;
+	// The builders below still read the deserializer's mirror of an object;
+	// the tree and the mirror agree until an edit, and the builders only read
+	// what this class never edits.
+	private ObjectPersistencePacket unwrap (final SaveObject object) {
+		return (ObjectPersistencePacket) object.property().obj;
 	}
 
 	public boolean isInParty (final Property character) {
-		// The property tree is the source of truth: after in-memory surgery
-		// the obj-side component list is stale.
-		return findComponentProperty(character, "PartyMemberAI").isPresent();
+		return SaveObject.of(character)
+			.flatMap(object -> object.component("PartyMemberAI"))
+			.isPresent();
 	}
 
-	private Optional<Property> findPlayer (final List<Property> packets) {
-		for (final Property property : packets) {
-			if (isPacket(property) && unwrap(property).ObjectName.startsWith("Player_")) {
-				return Optional.of(property);
-			}
-		}
-
-		return Optional.empty();
+	private static boolean isStoredRecord (final SaveObject object) {
+		return object.name() != null && object.name().endsWith("_stored");
 	}
 
-	private Optional<Property> findCharacterByID (
-		final List<Property> packets
-		, final String objectID) {
-
-		for (final Property property : packets) {
-			if (!isPacket(property)) {
-				continue;
-			}
-
-			final ObjectPersistencePacket packet = unwrap(property);
-			final String name = packet.ObjectName;
-			if (objectID.equals(packet.ObjectID)
-				&& !name.endsWith("_stored")
-				&& (name.startsWith("Player_") || name.startsWith("Companion_"))) {
-
-				return Optional.of(property);
-			}
-		}
-
-		return Optional.empty();
-	}
-
-	private Optional<Property> findByObjectID (
-		final List<Property> packets
-		, final String objectID) {
-
-		for (final Property property : packets) {
-			if (isPacket(property) && objectID.equals(unwrap(property).ObjectID)
-				&& !unwrap(property).ObjectName.endsWith("_stored")) {
-
-				return Optional.of(property);
-			}
-		}
-
-		return Optional.empty();
+	private Optional<SaveObject> findCharacterByID (final SaveModel save, final String objectID) {
+		return save.objects().stream()
+			.filter(object -> objectID.equalsIgnoreCase(object.id())
+				&& !isStoredRecord(object)
+				&& (object.isPlayer() || object.isCompanion()))
+			.findFirst();
 	}
 
 	// Finds the "_stored" record whose StoredCharacterInfo.GUID points at the
 	// given character.
-	private Optional<Property> findStoredRecord (
+	private Optional<SaveObject> findStoredRecord (
 		final List<Property> packets
 		, final String characterID) {
 
-		for (final Property property : packets) {
-			if (!isPacket(property) || !unwrap(property).ObjectName.endsWith("_stored")) {
-				continue;
-			}
-
-			final Optional<ComponentPersistencePacket> info = EKUtils.findComponent(
-				unwrap(property).ComponentPackets, "StoredCharacterInfo");
-
-			if (info.isPresent()) {
-				final Object guid = info.get().Variables.get("GUID");
-				if (guid != null && characterID.equals(guid.toString())) {
-					return Optional.of(property);
-				}
-			}
-		}
-
-		return Optional.empty();
-	}
-
-	private UUID storedInfoAnimalGuid (final ObjectPersistencePacket record) {
-		final Optional<ComponentPersistencePacket> info =
-			EKUtils.findComponent(record.ComponentPackets, "StoredCharacterInfo");
-
-		if (info.isPresent()) {
-			final Object guid = info.get().Variables.get("AnimalCompanionGUID");
-			if (guid instanceof UUID) {
-				return (UUID) guid;
-			}
-		}
-
-		return null;
+		return SaveModel.of(packets).objects().stream()
+			.filter(PartyManager::isStoredRecord)
+			.filter(record -> record.component("StoredCharacterInfo")
+				.flatMap(info -> info.get("GUID"))
+				.filter(guid -> guid != null && characterID.equals(guid.toString()))
+				.isPresent())
+			.findFirst();
 	}
 
 	private int firstFreeSlot (final List<Property> packets) {
 		final Set<Integer> taken = new HashSet<>();
-		for (final Property property : packets) {
-			if (!isPacket(property) || !isInParty(property)) {
-				continue;
-			}
-
-			final Optional<ComplexProperty> ai =
-				findComponentProperty(property, "PartyMemberAI");
-			if (!ai.isPresent()) {
-				continue;
-			}
-
-			final Optional<Property> variables = Property.find(ai.get(), "Variables");
-			if (variables.isPresent() && variables.get() instanceof DictionaryProperty) {
-				for (final Map.Entry<Property, Property> entry
-					: ((DictionaryProperty) variables.get()).items) {
-
-					final Object key = ((SimpleProperty) entry.getKey()).value;
-					if ("AssignedSlot".equals(key)
-						&& entry.getValue() instanceof SimpleProperty) {
-
-						final Object slot = ((SimpleProperty) entry.getValue()).value;
-						if (slot instanceof Integer) {
-							taken.add((Integer) slot);
-						}
-					}
-				}
-			}
+		for (final SaveObject object : SaveModel.of(packets).objects()) {
+			object.component("PartyMemberAI")
+				.flatMap(ai -> ai.get("AssignedSlot"))
+				.filter(slot -> slot instanceof Integer)
+				.ifPresent(slot -> taken.add((Integer) slot));
 		}
 
 		for (int slot = 0; slot < MAX_PARTY_SIZE; slot++) {
@@ -913,40 +746,13 @@ public class PartyManager {
 	}
 
 	private Optional<CollectionProperty> findStrongholdList (
-		final List<Property> packets
+		final SaveModel save
 		, final String listName) {
 
-		for (final Property property : packets) {
-			if (!isPacket(property)
-				|| !unwrap(property).ObjectName.startsWith("InGameGlobal(")) {
-				continue;
-			}
-
-			final Optional<ComplexProperty> stronghold =
-				findComponentProperty(property, "Stronghold");
-			if (!stronghold.isPresent()) {
-				continue;
-			}
-
-			final Optional<Property> variables =
-				Property.find(stronghold.get(), "Variables");
-			if (!variables.isPresent()
-				|| !(variables.get() instanceof DictionaryProperty)) {
-				continue;
-			}
-
-			for (final Map.Entry<Property, Property> entry
-				: ((DictionaryProperty) variables.get()).items) {
-
-				final Object key = ((SimpleProperty) entry.getKey()).value;
-				if (listName.equals(key)
-					&& entry.getValue() instanceof CollectionProperty) {
-
-					return Optional.of((CollectionProperty) entry.getValue());
-				}
-			}
-		}
-
-		return Optional.empty();
+		return save.inGameGlobal()
+			.flatMap(global -> global.component("Stronghold"))
+			.flatMap(stronghold -> stronghold.variable(listName))
+			.filter(list -> list instanceof CollectionProperty)
+			.map(list -> (CollectionProperty) list);
 	}
 }

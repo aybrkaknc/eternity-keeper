@@ -65,6 +65,11 @@ public final class SaveObject {
 		return text("ObjectID");
 	}
 
+	/** The area the object is in, or {@code null}. */
+	public String levelName () {
+		return text("LevelName");
+	}
+
 	/** The ObjectName of the object that owns this one, or {@code null}. */
 	public String parent () {
 		return text("Parent");
@@ -177,6 +182,38 @@ public final class SaveObject {
 		}
 
 		items.set(at, now.property());
+	}
+
+	/**
+	 * Takes one of the object's components away.
+	 *
+	 * @throws WriteRefusedException when it is not one of this object's
+	 *         components; nothing is changed
+	 */
+	public void remove (final Component component) throws WriteRefusedException {
+		if (!componentArray().remove(component.property())) {
+			throw new WriteRefusedException(
+				describe() + " has no " + component.type() + " of its own to remove. Nothing was changed.");
+		}
+	}
+
+	/**
+	 * Gives the object a component, after the ones it has, as the game adds one.
+	 *
+	 * @throws WriteRefusedException when the object has no list of components;
+	 *         nothing is changed
+	 */
+	@SuppressWarnings("unchecked")
+	public void add (final ComplexProperty component) throws WriteRefusedException {
+		final Optional<Property> array = Property.find(packet, "ComponentPackets")
+			.filter(found -> found instanceof SingleDimensionalArrayProperty);
+
+		if (!array.isPresent()) {
+			throw new WriteRefusedException(
+				describe() + " has no components to add one to. Nothing was changed.");
+		}
+
+		((SingleDimensionalArrayProperty) array.get()).items.add(component);
 	}
 
 	@SuppressWarnings("unchecked")

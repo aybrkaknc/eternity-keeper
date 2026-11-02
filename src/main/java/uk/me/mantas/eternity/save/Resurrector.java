@@ -28,6 +28,7 @@ import uk.me.mantas.eternity.game.AIController;
 import uk.me.mantas.eternity.game.ComponentPersistencePacket;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.save.CompanionRegistry.Companion;
+import uk.me.mantas.eternity.save.model.Component;
 import uk.me.mantas.eternity.save.model.SaveModel;
 import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
@@ -382,22 +383,21 @@ public class Resurrector {
 		, final int slot
 		, final boolean secondary
 		, final AIController.AISummonType summonType
-		, final UUID summoner) {
+		, final UUID summoner) throws WriteRefusedException {
 
-		final Optional<DictionaryProperty> aiVariables = ((ComplexProperty) root)
-			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-			.flatMap(c -> EKUtils.findSubComponent(c, "PartyMemberAI"))
-			.flatMap(a -> a.<DictionaryProperty>findProperty("Variables"));
+		final Optional<SaveObject> character = SaveObject.of(root);
+		if (!character.isPresent()) {
+			logger.error("Donor copy of '%s' is not a game object.%n", prefix);
+			return false;
+		}
 
-		if (aiVariables.isPresent()) {
-			final Optional<Property> assignedSlot = aiVariables.get().findEntry("AssignedSlot");
-			if (!assignedSlot.isPresent() || !Property.update(assignedSlot.get(), slot)) {
-				logger.error("Unable to assign a party slot to '%s'.%n", prefix);
-				return false;
-			}
-		} else if (PartyManager.findComponentProperty(root, "AIPackageController").isPresent()) {
-			PartyManager.removeComponent(root, "AIPackageController");
-			PartyManager.addComponent(root,
+		final Optional<Component> ai = character.get().component("PartyMemberAI");
+		final Optional<Component> controller = character.get().component("AIPackageController");
+		if (ai.isPresent()) {
+			ai.get().set("AssignedSlot", slot);
+		} else if (controller.isPresent()) {
+			character.get().remove(controller.get());
+			character.get().add(
 				PartyManager.buildPartyMemberAI(slot, secondary, summonType, summoner));
 			logger.info("Converted roster copy of '%s' into a party member.%n", prefix);
 		} else {
@@ -407,7 +407,7 @@ public class Resurrector {
 
 		// Roster members are stored packed at the stronghold; party members
 		// must be unpacked so the game instantiates them next to the player.
-		Property.update(root, "Packed", false);
+		character.get().set("Packed", false);
 		return true;
 	}
 

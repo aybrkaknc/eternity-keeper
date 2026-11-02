@@ -301,6 +301,31 @@ public class SaveModelTest extends TestHarness {
 		}
 	}
 
+	@Test
+	public void componentsAreRemovedAndAddedAtTheEnd () throws Exception {
+		final File file = fixture();
+		final DeserializedPackets packets = read(file);
+		final SaveModel save = SaveModel.of(packets);
+		final SaveObject player = save.player().get();
+		final SaveObject calisca = save.object(COMPANION_GUID).get();
+		final List<String> types = types(player);
+
+		final Component ai = player.component("PartyMemberAI").get();
+		player.remove(ai);
+		assertFalse(player.component("PartyMemberAI").isPresent());
+		assertEquals(types.size() - 1, player.components().size());
+
+		player.add(ai.property());
+		final List<String> after = types(player);
+		assertEquals("PartyMemberAI", after.get(after.size() - 1));
+		assertEquals(types.size(), after.size());
+
+		assertRefused(() -> player.remove(calisca.component("Health").get()), "Health");
+
+		final SaveObject bare = SaveObject.of(packet("Bare", "1")).get();
+		assertRefused(() -> bare.add(ai.property()), "Bare");
+	}
+
 	private static List<String> types (final SaveObject object) {
 		final List<String> types = new ArrayList<>();
 		for (final Component component : object.components()) {

@@ -22,6 +22,7 @@ import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
+import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.ShortReadException;
@@ -293,9 +294,10 @@ public final class Loadout {
 
 		final List<Property> packets = read.get().getPackets();
 		final Property character = packets.get(0);
-		if (!(character.obj instanceof ObjectPersistencePacket)
-			|| !PartyManager.findComponentProperty(character, "Equipment").isPresent()
-			|| !PartyManager.findComponentProperty(character, "CharacterStats").isPresent()) {
+		final Optional<SaveObject> object = SaveObject.of(character);
+		if (!object.isPresent()
+			|| !object.get().component("Equipment").isPresent()
+			|| !object.get().component("CharacterStats").isPresent()) {
 
 			throw notALoadout(file);
 		}
@@ -619,9 +621,9 @@ public final class Loadout {
 
 	/** A component's variable, or null. */
 	static Property variable (final Property packet, final String component, final String name) {
-		return PartyManager.findComponentProperty(packet, component)
-			.<DictionaryProperty>flatMap(c -> c.findProperty("Variables"))
-			.flatMap(v -> v.<Property>findEntry(name))
+		return SaveObject.of(packet)
+			.flatMap(o -> o.component(component))
+			.flatMap(c -> c.variable(name))
 			.orElse(null);
 	}
 

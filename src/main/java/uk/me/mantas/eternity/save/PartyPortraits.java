@@ -21,7 +21,7 @@ package uk.me.mantas.eternity.save;
 import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
-import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
+import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 
@@ -217,8 +217,9 @@ public final class PartyPortraits {
 	}
 
 	private static Optional<DictionaryProperty> variables (final Property packet, final String component) {
-		return PartyManager.findComponentProperty(packet, component)
-			.flatMap(found -> found.<DictionaryProperty>findProperty("Variables"));
+		return SaveObject.of(packet)
+			.flatMap(object -> object.component(component))
+			.flatMap(found -> found.property().<DictionaryProperty>findProperty("Variables"));
 	}
 
 	private static Object value (final DictionaryProperty variables, final String key) {
