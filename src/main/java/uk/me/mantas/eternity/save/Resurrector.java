@@ -28,8 +28,11 @@ import uk.me.mantas.eternity.game.AIController;
 import uk.me.mantas.eternity.game.ComponentPersistencePacket;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.save.CompanionRegistry.Companion;
+import uk.me.mantas.eternity.save.model.SaveModel;
+import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
 import uk.me.mantas.eternity.serializer.properties.*;
 
 import java.io.File;
@@ -38,6 +41,7 @@ import java.util.*;
 
 import static uk.me.mantas.eternity.EKUtils.findComponent;
 import static uk.me.mantas.eternity.EKUtils.unwrapPacket;
+import static uk.me.mantas.eternity.game.UnityEngine.Vector3;
 
 /**
  * Brings a companion who died in-game back to life. The game deletes a dead
@@ -331,26 +335,15 @@ public class Resurrector {
 		}
 
 		// Anchor next to the player, like CharacterImporter does.
-		final Optional<Property> player = retainedDead.stream()
-			.filter(p -> p.obj instanceof ObjectPersistencePacket)
-			.filter(p -> {
-				final String name = ((ObjectPersistencePacket) p.obj).ObjectName;
-				return name != null && name.toLowerCase().startsWith("player_");
-			})
-			.findFirst();
-
+		final Optional<SaveObject> player = SaveModel.of(retainedDead).player();
 		if (!player.isPresent()) {
 			logger.error("No player character in target save.%n");
 			return false;
 		}
 
-		final ObjectPersistencePacket playerPacket = unwrapPacket(player.get());
-		if (!anchor(root.get(), playerPacket, 1f)) {
-			return false;
-		}
-
-		if (linkedRoot != null && !anchor(linkedRoot, playerPacket, 2f)) {
-			return false;
+		anchor(root.get(), player.get(), 1f);
+		if (linkedRoot != null) {
+			anchor(linkedRoot, player.get(), 2f);
 		}
 
 		if (!clearFlags(retainedDead, primaryDeathFlag, extraFlagsToClear)) {
@@ -435,25 +428,15 @@ public class Resurrector {
 		return graph;
 	}
 
-	private boolean anchor (
-		final Property root, final ObjectPersistencePacket playerPacket, final float offset) {
+	private static void anchor (final Property root, final SaveObject player, final float offset)
+		throws WriteRefusedException {
 
-		if (!Property.update(root, "LevelName", playerPacket.LevelName)) {
-			logger.error("Unable to set the transplanted object's level.%n");
-			return false;
-		}
-
-		final Optional<Property> location = Property.find(root, "Location");
-		if (!location.isPresent()
-			|| !Property.update(location.get(), "x", playerPacket.Location.x + offset)
-			|| !Property.update(location.get(), "y", playerPacket.Location.y + 1f)
-			|| !Property.update(location.get(), "z", playerPacket.Location.z)) {
-
-			logger.error("Unable to anchor the transplanted object next to the player.%n");
-			return false;
-		}
-
-		return true;
+		final SaveObject object = SaveObject.of(root).orElseThrow(() -> new WriteRefusedException(
+			"What was brought back is not a game object. Nothing was changed."));
+		final Vector3 beside = player.location();
+		beside.x += offset;
+		beside.y += 1f;
+		object.moveTo((String) player.get("LevelName").orElse(null), beside);
 	}
 
 	private static String sessionOf (final String saveName) {
@@ -503,51 +486,32 @@ public class Resurrector {
 	// The primary death flag must exist and be cleared (a set flag with the
 	// character alive breaks the game's narrative state); extra flags are
 	// cleared only when present.
-	private boolean clearFlags (
+	private static boolean clearFlags (
 		final List<Property> packets
 		, final String primaryFlag
-		, final List<String> extraFlags) {
+		, final List<String> extraFlags) throws WriteRefusedException {
 
-		for (final Property p : packets) {
-			if (!(p.obj instanceof ObjectPersistencePacket)) continue;
-			final ObjectPersistencePacket packet = (ObjectPersistencePacket) p.obj;
-			if (packet.ObjectName == null || !packet.ObjectName.startsWith("InGameGlobal")) {
-				continue;
-			}
-
-			final Optional<DictionaryProperty> mData = ((ComplexProperty) p)
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(c -> EKUtils.findSubComponent(c, "GlobalVariables"))
-				.flatMap(g -> g.<DictionaryProperty>findProperty("Variables"))
-				.flatMap(v -> v.<DictionaryProperty>findEntry("m_data"));
-
-			if (!mData.isPresent()) {
-				continue;
-			}
-
-			if (primaryFlag != null) {
-				final Optional<Property> flag = mData.get().findEntry(primaryFlag);
-				if (!flag.isPresent()) {
-					logger.error("Death flag '%s' not found in globals.%n", primaryFlag);
-					return false;
-				}
-
-				if (!Property.update(flag.get(), 0)) {
-					return false;
-				}
-			}
-
-			for (final String extra : extraFlags) {
-				final Optional<Property> flag = mData.get().findEntry(extra);
-				if (flag.isPresent() && !Property.update(flag.get(), 0)) {
-					return false;
-				}
-			}
-
-			return true;
+		final SaveModel save = SaveModel.of(packets);
+		if (!save.inGameGlobal().isPresent()) {
+			logger.error("No InGameGlobal object found in target save.%n");
+			return false;
 		}
 
-		logger.error("No InGameGlobal object found in target save.%n");
-		return false;
+		if (primaryFlag != null) {
+			if (!save.globalVariable(primaryFlag).isPresent()) {
+				logger.error("Death flag '%s' not found in globals.%n", primaryFlag);
+				return false;
+			}
+
+			save.setGlobalVariable(primaryFlag, 0);
+		}
+
+		for (final String extra : extraFlags) {
+			if (save.globalVariable(extra).isPresent()) {
+				save.setGlobalVariable(extra, 0);
+			}
+		}
+
+		return true;
 	}
 }

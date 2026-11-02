@@ -29,6 +29,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import static uk.me.mantas.eternity.game.UnityEngine.Vector3;
+
 /**
  * One game object of a save (an ObjectPersistencePacket): its own fields --
  * ObjectName, ObjectID, Parent, LevelName -- and its components.
@@ -96,6 +98,48 @@ public final class SaveObject {
 		}
 
 		TypedValue.write((SimpleProperty) found.get(), value, describe() + "'s " + field);
+	}
+
+	/** Where in its area the object stands; 0, 0, 0 for one that has no Location. */
+	public Vector3 location () {
+		final Vector3 location = new Vector3();
+		final Optional<Property> found = Property.find(packet, "Location");
+		if (found.isPresent()) {
+			location.x = coordinate(found.get(), "x");
+			location.y = coordinate(found.get(), "y");
+			location.z = coordinate(found.get(), "z");
+		}
+
+		return location;
+	}
+
+	/**
+	 * Puts the object in that area at that place.
+	 *
+	 * @throws WriteRefusedException when the object has no LevelName or
+	 *         Location to set; nothing is changed
+	 */
+	public void moveTo (final String levelName, final Vector3 location) throws WriteRefusedException {
+		final Optional<Property> found = Property.find(packet, "Location");
+		if (!found.isPresent()
+			|| !Property.find(found.get(), "x").isPresent()
+			|| !Property.find(found.get(), "y").isPresent()
+			|| !Property.find(found.get(), "z").isPresent()) {
+
+			throw new WriteRefusedException(describe() + " has no Location to move. Nothing was changed.");
+		}
+
+		set("LevelName", levelName);
+		Property.update(found.get(), "x", location.x);
+		Property.update(found.get(), "y", location.y);
+		Property.update(found.get(), "z", location.z);
+	}
+
+	private static float coordinate (final Property location, final String axis) {
+		return Property.find(location, axis)
+			.filter(value -> value instanceof SimpleProperty && ((SimpleProperty) value).value instanceof Float)
+			.map(value -> (Float) ((SimpleProperty) value).value)
+			.orElse(0f);
 	}
 
 	/** The component of this type ({@code TypeString}, in any case). */

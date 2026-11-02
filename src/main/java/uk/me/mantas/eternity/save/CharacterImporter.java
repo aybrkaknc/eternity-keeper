@@ -223,7 +223,7 @@ public class CharacterImporter {
 
 			retainedObjects = removeCharacterObjects(mobileObjects, existing, partys);
 			levelName = (String) existing.get("LevelName").orElse(null);
-			location = location(existing);
+			location = existing.location();
 		} else {
 			// Plain import: we need a character in the existing save to
 			// 'anchor' the imported character to. Just naively try to put the
@@ -235,7 +235,7 @@ public class CharacterImporter {
 			}
 
 			levelName = (String) anchorPoint.get().get("LevelName").orElse(null);
-			final Vector3 anchor = location(anchorPoint.get());
+			final Vector3 anchor = anchorPoint.get().location();
 			location = new Vector3();
 			location.x = anchor.x + 1;
 			location.y = anchor.y + 1;
@@ -292,7 +292,7 @@ public class CharacterImporter {
 			keepPartysBelongings(existingMatch.get(), character, retainedObjects);
 		}
 
-		anchorCharacter(character, levelName, location);
+		character.moveTo(levelName, location);
 
 		final SimpleProperty simpleObjCount = deserialized.get().getCount();
 		final int count = (int) simpleObjCount.obj;
@@ -495,36 +495,6 @@ public class CharacterImporter {
 		return character.component("Player")
 			.flatMap(player -> player.get("SessionID"))
 			.filter(value -> value instanceof UUID);
-	}
-
-	private static Vector3 location (final SaveObject object) {
-		final Vector3 location = new Vector3();
-		final Optional<Property> found = Property.find(object.property(), "Location");
-		if (found.isPresent()) {
-			location.x = (float) ((SimpleProperty) Property.find(found.get(), "x").get()).value;
-			location.y = (float) ((SimpleProperty) Property.find(found.get(), "y").get()).value;
-			location.z = (float) ((SimpleProperty) Property.find(found.get(), "z").get()).value;
-		}
-
-		return location;
-	}
-
-	private static void anchorCharacter (
-		final SaveObject character
-		, final String areaName
-		, final Vector3 newLocation) throws WriteRefusedException {
-
-		character.set("LevelName", areaName);
-
-		final Optional<Property> location = Property.find(character.property(), "Location");
-		if (!location.isPresent()
-			|| !Property.update(location.get(), "x", newLocation.x)
-			|| !Property.update(location.get(), "y", newLocation.y)
-			|| !Property.update(location.get(), "z", newLocation.z)) {
-
-			throw new WriteRefusedException(
-				character.name() + " has no location to put them at. Nothing was changed.");
-		}
 	}
 
 	private static Optional<SaveObject> findCharacter (final SaveModel chr) {

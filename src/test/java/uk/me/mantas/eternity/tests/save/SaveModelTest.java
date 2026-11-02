@@ -52,6 +52,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static uk.me.mantas.eternity.game.UnityEngine.Vector3;
 
 public class SaveModelTest extends TestHarness {
 	private static final String PLAYER_GUID = "09517a0d-4fec-407c-a749-a531f3be64e0";
@@ -190,6 +191,26 @@ public class SaveModelTest extends TestHarness {
 
 		assertEquals("AR_0001_Dyrford_Village"
 			, SaveModel.of(read(file)).player().get().get("LevelName").get());
+	}
+
+	@Test
+	public void anObjectIsMovedToAnAreaAndAPlace () throws Exception {
+		final File file = fixture();
+		final DeserializedPackets packets = read(file);
+		final SaveModel save = SaveModel.of(packets);
+		final SaveObject player = save.player().get();
+		final SaveObject calisca = save.object(COMPANION_GUID).get();
+
+		final Vector3 beside = player.location();
+		beside.x += 1;
+		calisca.moveTo("AR_0001_Dyrford_Village", beside);
+		packets.replace(file);
+
+		final SaveObject after = SaveModel.of(read(file)).object(COMPANION_GUID).get();
+		assertEquals("AR_0001_Dyrford_Village", after.get("LevelName").get());
+		assertEquals(beside.x, after.location().x, 0);
+		assertEquals(player.location().y, after.location().y, 0);
+		assertEquals(player.location().z, after.location().z, 0);
 	}
 
 	// An edit changes the tree; the mirror objects the deserializer also built
