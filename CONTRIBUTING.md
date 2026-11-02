@@ -151,7 +151,8 @@ with each feature's data when a save loads.
 1. **Never write to the user's save.** Edits go to a private working copy
    (`environment/WorkingSave`); Save writes a new file.
 2. **Write the exact C# type back.** A `String` where the save had a `UUID`, or
-   the wrong numeric type, corrupts the file.
+   the wrong numeric type, corrupts the file. `save/model/TypedValue` converts
+   what the page sends, and refuses what it cannot convert.
 3. **Follow references before mutating.** The format de-duplicates object
    graphs, so a property may be a reference to one elsewhere.
 4. **Counts match contents**: the leading object count and every list length.
@@ -201,6 +202,10 @@ with each feature's data when a save loads.
 17. **The folder the save list unpacked holds only a tile's pictures** until
    `UnpackedSaves.complete(folder)`. Resolve the open save's folder with
    `WorkingSave.forEditing` or `forReading`, never from the list's entry.
+18. **Writers read and write the property tree, never the mirror objects the
+   deserializer also builds**, which an edit does not change. Find objects,
+   components and variables through the save model (`save/model/SaveModel`);
+   [docs/glossary.md](docs/glossary.md) says what each word means.
 
 ## Testing in the game
 

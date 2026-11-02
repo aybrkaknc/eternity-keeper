@@ -13,7 +13,7 @@ the fault are given where they are known. [CONTRIBUTING.md](../CONTRIBUTING.md)
 has the short version.
 
 1. **Never overwrite an original save.** Clone to a new working dir, write a new `(edited)` `.savegame` (`ChangesSaver.cloneExtractedSave`).
-2. **Exact type fidelity** on write-back (`castValue`); writing the wrong C# type corrupts the save.
+2. **Exact type fidelity** on write-back (`save/model/TypedValue`); writing the wrong C# type corrupts the save. A value that cannot be the type the save holds is refused, never replaced by a guess: until 2026-11-02 Save wrote an enum name the game does not have as the enum's first constant.
 3. Only `SimpleProperty` is directly writable (`Property.update`); `EternityDateTime`/`EternityTimeInterval` get field-level updates.
 4. **Follow references before mutating** — the format de-duplicates object graphs; chase `ComplexProperty.reference` via `followReference`.
 5. **Counts must match contents**: the leading object count and every list length (see `CharacterImporter` adjusting `simpleObjCount`).
@@ -256,6 +256,33 @@ has the short version.
     area files are left exactly as the game wrote them. **After any in-game
     load of an edited save, grep Player.log for `Exception` and `already
     exists`**: that, not the screens, is what catches an ID in two places.
+
+26. **Writers read and write the tree, never the mirror; the save model is
+    how.** The deserializer builds two things from a packet file: the
+    property tree, which the serializer writes back, and plain Java objects
+    (`ObjectPersistencePacket`, `ComponentPersistencePacket`) that an edit
+    never reaches. Code that read the mirror after an edit read stale values:
+    `PartyManager` had to note that "after in-memory surgery the obj-side
+    component list is stale", `CharacterImporter` kept the two in step by
+    hand, and `PacketMint` builds mirrors with no components at all. Each
+    writer also found the main character and the globals its own way
+    (`startsWith("Player_")`, `toLowerCase().startsWith("player_")`,
+    `startsWith("Global")`), with its own walk down to a component.
+    `save/model/SaveModel` is that walk once: `SaveModel.of(packets)` gives
+    the objects, `player()`, `inGameGlobal()`, `worldGlobal()`, `object(id)`,
+    `globalVariable(name)`; a `SaveObject` has its fields, `location()`,
+    `moveTo`, its components, and `add`, `remove` and `replace` for them; a
+    `Component` gets and sets its variables. Reads come back `Optional`; a
+    write that cannot be made (no such variable, a value of another type)
+    throws `WriteRefusedException` with a message for the user and changes
+    nothing. The names it goes by were measured on every save
+    ([save-format.md](save-format.md), "Names the save model goes by"). The
+    import, the stronghold, the quest restore, the resurrection, the party
+    and Save went over to it on 2026-11-02 with byte-identical output
+    (`UnchangedWritesTest`); the inventory, the loadouts, the vendors and
+    `PartyManager`'s stored-record builder (which reads only what nothing
+    edits) are still to move, and the opener and the comparison read the mirror, which
+    is right for a read of an unedited file.
 
 ## Checking every write (2026-09-27)
 

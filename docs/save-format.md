@@ -17,9 +17,30 @@ What each *feature* reads and writes, in detail, is in [features.md](features.md
 - **`serializer/TypeMap.java` is the de-facto schema** (~90 C#→Java type mappings). Any non-primitive C# type not in it FAILS deserialization. Supporting new data = add a TypeMap entry + a mirror class in `game/`.
 - Data flow: `SavedGameOpener` → **scalar-only** JSON to the UI → UI edits its copy → `ChangesSaver` re-deserializes the original, applies updates to the `Property` tree, reserializes, zips a NEW save. The UI never sees complex objects.
 - **Two write tiers**:
-  - *Scalar* (generic, tested): `ChangesSaver.updateVariables`/`castValue` — int/float/bool/String/enum/UnsignedInteger/EternityDateTime.
-  - *Structural* (manual): the `PartyManager`/`CharacterImporter` pattern — navigate with `findProperty`/`findSubComponent`/`findEntry`, manufacture packets with exact C# type strings.
+  - *Scalar* (generic, tested): `ChangesSaver.updateVariables` with `save/model/TypedValue` — int/float/bool/String/enum/UnsignedInteger/EternityDateTime; a value that is not the type the save holds stops the Save.
+  - *Structural* (manual): the `PartyManager`/`CharacterImporter` pattern — find objects, components and variables through the save model (`save/model`, invariant 26; older writers still walk with `findProperty`/`findSubComponent`/`findEntry`), manufacture packets with exact C# type strings.
 - Windows Store→Steam conversion is a serialize-time module rename `UnityEngine.CoreModule`→`UnityEngine` (`SerializerFormat.UNITY_2017`). Normal edits must reserialize with `PRESERVE`.
+
+## Names the save model goes by
+
+`save/model/SaveModel` finds what a writer looks for by these rules, one for
+each kind of object. They were measured on 2026-11-02 over 24 saves (the
+test environment's and the real saves folder's, read only), where every
+save had exactly one of each:
+
+| What | Rule | Every save measured had |
+|---|---|---|
+| The main character | name starts `Player_` | `Player_New_Game(Clone)_0` |
+| A companion | name starts `Companion_` | |
+| The in-game global | name starts `InGameGlobal(` | `InGameGlobal(Clone)` |
+| The world global | name starts `Global(Clone)`, or is exactly `Global` | `Global(Clone)` |
+| A component | `TypeString`, compared ignoring case | no two differing only in case |
+| An object by ID | `ObjectID`, compared ignoring case | |
+
+The names in the tree were the names in the mirror in every save. Before the
+model each writer had its own rule: Save took any name starting `player_`
+in any case and any starting `Global`, the party `Player_`, the stronghold
+`InGameGlobal(`, and components were matched exactly.
 
 ## Save structure map (from live dump of a real save)
 
