@@ -19,7 +19,6 @@
 
 package uk.me.mantas.eternity.tests.save;
 
-import com.google.common.primitives.UnsignedInteger;
 import net.lingala.zip4j.ZipFile;
 import org.apache.commons.io.FileUtils;
 import org.cef.callback.CefQueryCallback;
@@ -28,7 +27,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.Test;
 import uk.me.mantas.eternity.EKUtils;
-import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.Settings;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.environment.WorkingSave;
@@ -38,6 +36,7 @@ import uk.me.mantas.eternity.game.*;
 import uk.me.mantas.eternity.save.ChangesSaver;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.SharpSerializer;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
 import uk.me.mantas.eternity.serializer.properties.*;
 import uk.me.mantas.eternity.tests.ExposedClass;
 import uk.me.mantas.eternity.tests.TestHarness;
@@ -48,6 +47,8 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.URISyntaxException;
 import java.util.*;
 
@@ -704,65 +705,63 @@ public class ChangesSaverTest extends TestHarness {
 
 	private enum Enum {ONE, TWO}
 
+	// The conversions themselves are SaveModelTest's
+	// textBecomesTheTypeTheSaveHolds. An enum the game does not have used to
+	// be saved as the first one; it stops the Save now, as a bad number does.
 	@Test
-	public void castValueTest () {
-		final Logger mockLogger = interceptLogging(ChangesSaver.class);
-		final ExposedClass exposedSaver = expose(ChangesSaver.class);
-		final EternityDateTime dateTime = new EternityDateTime();
-		final EternityTimeInterval timeInterval = new EternityTimeInterval();
-		final Map<Object, Class> argMap = new LinkedHashMap<>();
+	public void aValueThatIsNotTheSavesTypeStopsTheSave () throws Exception {
+		final DictionaryProperty variables = new DictionaryProperty("Variables", null);
+		final SimpleProperty choice = variable(variables, "Choice", Enum.ONE);
+		final SimpleProperty flag = variable(variables, "Flag", true);
+		final SimpleProperty count = variable(variables, "Count", 1);
 
-		argMap.put(1, Object.class);
-		argMap.put("2", String.class);
-		final int intTest = exposedSaver.call("castValue", argMap);
-		assertEquals(2, intTest);
+		final Map<String, String> good = new LinkedHashMap<>();
+		good.put("Choice", "TWO");
+		good.put("Flag", "false");
+		good.put("Count", "2");
+		updateVariables(variables, good);
+		assertEquals(Enum.TWO, choice.value);
+		assertEquals(false, flag.value);
+		assertEquals(2, count.value);
 
-		argMap.clear();
-		argMap.put(1d, Object.class);
-		argMap.put("3.14159", String.class);
-		final double dblTest = exposedSaver.call("castValue", argMap);
-		assertEquals(3.14159, dblTest, 1e-6);
+		for (final String[] bad : new String[][] {{"Choice", "THREE"}, {"Flag", "yes"}, {"Count", "2.5"}}) {
+			try {
+				updateVariables(variables, Collections.singletonMap(bad[0], bad[1]));
+				fail(bad[0] + " = " + bad[1] + " was saved");
+			} catch (final WriteRefusedException refused) {
+				assertTrue(refused.getMessage(), refused.getMessage().startsWith(bad[0] + ": '" + bad[1] + "'"));
+			}
+		}
 
-		argMap.clear();
-		argMap.put(true, Object.class);
-		argMap.put("false", String.class);
-		final boolean boolTest = exposedSaver.call("castValue", argMap);
-		assertFalse(boolTest);
+		assertEquals(Enum.TWO, choice.value);
+		assertEquals(false, flag.value);
+		assertEquals(2, count.value);
+	}
 
-		argMap.clear();
-		argMap.put(UnsignedInteger.valueOf(Integer.MAX_VALUE + 1L), Object.class);
-		argMap.put("2147483648", String.class);
-		final UnsignedInteger uintTest = exposedSaver.call("castValue", argMap);
-		assertEquals(2147483648L, uintTest.longValue());
+	private static SimpleProperty variable (
+		final DictionaryProperty variables, final String name, final Object value) {
 
-		argMap.clear();
-		argMap.put(dateTime, Object.class);
-		argMap.put("42", String.class);
-		final int dateTimeTest = exposedSaver.call("castValue", argMap);
-		assertEquals(42, dateTimeTest);
+		final SimpleProperty key = new SimpleProperty(null, null);
+		key.value = name;
+		key.obj = name;
+		final SimpleProperty entry = new SimpleProperty(null, null);
+		entry.value = value;
+		entry.obj = value;
+		variables.items.add(new AbstractMap.SimpleEntry<>(key, entry));
+		return entry;
+	}
 
-		argMap.clear();
-		argMap.put(timeInterval, Object.class);
-		argMap.put("42", String.class);
-		final int timeIntervalTest = exposedSaver.call("castValue", argMap);
-		assertEquals(42, timeIntervalTest);
+	private static void updateVariables (
+		final DictionaryProperty variables, final Map<String, String> updates) throws Exception {
 
-		argMap.clear();
-		argMap.put(Enum.ONE, Object.class);
-		argMap.put("TWO", String.class);
-		final Enum enumTest = exposedSaver.call("castValue", argMap);
-		assertEquals(Enum.TWO, enumTest);
-
-		argMap.clear();
-		argMap.put(Enum.ONE, Object.class);
-		argMap.put("THREE", String.class);
-		final Enum enumFailTest = exposedSaver.call("castValue", argMap);
-		assertEquals(Enum.ONE, enumFailTest);
-
-		verify(mockLogger).error(
-			"Client returned non-existent enum value '%s' for class %s.%n"
-			, "THREE"
-			, Enum.class.getName());
+		final Method update = ChangesSaver.class.getDeclaredMethod(
+			"updateVariables", PacketDeserializer.class, DictionaryProperty.class, Map.class);
+		update.setAccessible(true);
+		try {
+			update.invoke(null, mock(PacketDeserializer.class), variables, updates);
+		} catch (final InvocationTargetException e) {
+			throw (Exception) e.getCause();
+		}
 	}
 
 	@Test

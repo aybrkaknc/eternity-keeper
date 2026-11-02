@@ -18,7 +18,6 @@
 
 package uk.me.mantas.eternity.save;
 
-import com.google.common.primitives.UnsignedInteger;
 import net.lingala.zip4j.ZipFile;
 import net.lingala.zip4j.exception.ZipException;
 import net.lingala.zip4j.model.ZipParameters;
@@ -26,7 +25,6 @@ import org.apache.commons.io.FileUtils;
 import org.cef.callback.CefQueryCallback;
 import org.json.JSONException;
 import org.json.JSONObject;
-import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.Settings;
 import uk.me.mantas.eternity.environment.Environment;
@@ -39,6 +37,7 @@ import uk.me.mantas.eternity.handlers.SaveWriteRequestAdapter;
 import uk.me.mantas.eternity.save.model.Component;
 import uk.me.mantas.eternity.save.model.SaveModel;
 import uk.me.mantas.eternity.save.model.SaveObject;
+import uk.me.mantas.eternity.save.model.TypedValue;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.WriteRefusedException;
@@ -343,10 +342,15 @@ public class ChangesSaver implements Runnable {
 			}
 		}
 
-		save.worldGlobal().ifPresent(global ->
-			updateGlobal(deserializer, global, command.getGlobals().get("Global")));
-		save.inGameGlobal().ifPresent(global ->
-			updateGlobal(deserializer, global, command.getGlobals().get("InGameGlobal")));
+		final Optional<SaveObject> worldGlobal = save.worldGlobal();
+		if (worldGlobal.isPresent()) {
+			updateGlobal(deserializer, worldGlobal.get(), command.getGlobals().get("Global"));
+		}
+
+		final Optional<SaveObject> inGameGlobal = save.inGameGlobal();
+		if (inGameGlobal.isPresent()) {
+			updateGlobal(deserializer, inGameGlobal.get(), command.getGlobals().get("InGameGlobal"));
+		}
 
 		for (final SaveObject object : save.objects()) {
 			final SaveWriteCommand.CharacterUpdate character =
@@ -403,7 +407,7 @@ public class ChangesSaver implements Runnable {
 
 	private static void updateGlobal (
 		final PacketDeserializer deserializer, final SaveObject global,
-		final Map<String, Map<String, String>> updates) {
+		final Map<String, Map<String, String>> updates) throws WriteRefusedException {
 		if (updates == null) {
 			return;
 		}
@@ -443,7 +447,7 @@ public class ChangesSaver implements Runnable {
 		final PacketDeserializer deserializer
 		, final SaveObject object
 		, final String component
-		, final Map<String, String> updates) {
+		, final Map<String, String> updates) throws WriteRefusedException {
 
 		final Optional<DictionaryProperty> variables = object.component(component)
 			.flatMap(found -> found.property().findProperty("Variables"));
@@ -461,7 +465,7 @@ public class ChangesSaver implements Runnable {
 	private static void updateVariables (
 		final PacketDeserializer deserializer
 		, final DictionaryProperty variables
-		, final Map<String, String> updates) {
+		, final Map<String, String> updates) throws WriteRefusedException {
 
 		for (final Map.Entry<String, String> update : updates.entrySet()) {
 			final String updateKey = update.getKey();
@@ -477,12 +481,13 @@ public class ChangesSaver implements Runnable {
 				continue;
 			}
 
+			// A value that is not the type the save holds stops the Save: it
+			// used to be skipped, or for an enum replaced by the first one.
 			try {
 				updateValue(deserializer, savedValue.get(), newValue);
-			} catch (final NumberFormatException e) {
-				logger.error(
-					"Unable to save value '%s' in ComponentPacket variable '%s'.%n",
-					newValue, updateKey);
+			} catch (final WriteRefusedException refused) {
+				throw new WriteRefusedException(
+					updateKey + ": " + refused.getMessage() + " Nothing was saved.");
 			}
 		}
 	}
@@ -490,7 +495,7 @@ public class ChangesSaver implements Runnable {
 	private static void updateHashtable (
 		final PacketDeserializer deserializer
 		, final DictionaryProperty variables
-		, final Map<String, String> updates) {
+		, final Map<String, String> updates) throws WriteRefusedException {
 
 		final Optional<DictionaryProperty> data = variables.findEntry("m_data");
 		if (!data.isPresent()) {
@@ -504,21 +509,22 @@ public class ChangesSaver implements Runnable {
 	}
 
 	private static void updateValue (
-		final PacketDeserializer deserializer, final Property property, final String val) {
+		final PacketDeserializer deserializer, final Property property, final String val)
+		throws WriteRefusedException {
 
 		if (property instanceof SimpleProperty) {
-			final Object typedValue = castValue(property.obj, val);
+			final Object typedValue = TypedValue.from(property.obj, val);
 			Property.update(property, typedValue);
 		} else if (property instanceof ComplexProperty) {
 			final ComplexProperty complexProperty = (ComplexProperty) property;
 			if (complexProperty.reference == null) {
-				final Object typedValue = castValue(property.obj, val);
+				final Object typedValue = TypedValue.from(property.obj, val);
 				updateComplexProperty((ComplexProperty) property, typedValue);
 			} else {
 				final Optional<Property> referencedProperty =
 					deserializer.followReference(complexProperty);
 				if (referencedProperty.isPresent()) {
-					final Object typedValue = castValue(referencedProperty.get().obj, val);
+					final Object typedValue = TypedValue.from(referencedProperty.get().obj, val);
 					updateComplexProperty((ComplexProperty) referencedProperty.get(), typedValue);
 				} else {
 					logger.error("ComplexProperty was a reference that could not be followed.%n");
@@ -540,48 +546,6 @@ public class ChangesSaver implements Runnable {
 				"Tried to update unsupported object of type '%s'.",
 				property.obj.getClass().getSimpleName());
 		}
-	}
-
-	private static Object castValue (final Object primitive, final String val) {
-		if (primitive instanceof Integer) {
-			return Integer.parseInt(val);
-		}
-
-		if (primitive instanceof Double) {
-			return Double.parseDouble(val);
-		}
-
-		if (primitive instanceof Float) {
-			return Float.parseFloat(val);
-		}
-
-		if (primitive instanceof Boolean) {
-			return Boolean.parseBoolean(val);
-		}
-
-		if (primitive instanceof UnsignedInteger) {
-			return UnsignedInteger.valueOf(val);
-		}
-
-		if (primitive instanceof EternityDateTime || primitive instanceof EternityTimeInterval) {
-			return Integer.parseInt(val);
-		}
-
-		if (primitive.getClass().isEnum()) {
-			for (final Object constant : primitive.getClass().getEnumConstants()) {
-				final Optional<String> constantName = EKUtils.enumConstantName(constant);
-				if (constantName.isPresent() && constantName.get().equals(val)) {
-					return constant;
-				}
-			}
-
-			logger.error(
-				"Client returned non-existent enum value '%s' for class %s.%n", val,
-				primitive.getClass().getName());
-			return primitive.getClass().getEnumConstants()[0];
-		}
-
-		return val;
 	}
 
 	private static File cloneExtractedSave (final String oldSaveAbsolutePath) throws IOException {

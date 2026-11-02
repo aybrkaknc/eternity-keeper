@@ -37,6 +37,10 @@
   the Java Access Bridge is switched on** (screen readers and magnifiers
   often switch it on). It starts now. The editor's window is a web page
   with its own accessibility, which the bridge never served.
+- **Save could quietly write a value the game does not have.** A choice the
+  game does not know was saved as the first one in its list, and a number or
+  a yes/no that could not be read was skipped without a word. Save now stops
+  and says which value it could not write; nothing is saved.
 
 ## 1.1.0-beta (2026-10-23)
 
