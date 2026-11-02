@@ -32,12 +32,13 @@ import uk.me.mantas.eternity.Settings;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.environment.WorkingSave;
 import uk.me.mantas.eternity.factory.PacketDeserializerFactory;
-import uk.me.mantas.eternity.game.ComponentPersistencePacket;
 import uk.me.mantas.eternity.game.EternityDateTime;
 import uk.me.mantas.eternity.game.EternityTimeInterval;
-import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.handlers.SaveChanges;
 import uk.me.mantas.eternity.handlers.SaveWriteRequestAdapter;
+import uk.me.mantas.eternity.save.model.Component;
+import uk.me.mantas.eternity.save.model.SaveModel;
+import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.WriteRefusedException;
@@ -48,8 +49,6 @@ import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static uk.me.mantas.eternity.EKUtils.findSubComponent;
-import static uk.me.mantas.eternity.EKUtils.unwrapPacket;
 
 /**
  * Persists scalar and structural modifications from the working save directory
@@ -100,23 +99,11 @@ public class ChangesSaver implements Runnable {
 	// object's CharacterStats.OverrideName, read from the property tree, which
 	// is what an edit changes (the packets' own objects keep the old value).
 	private static Optional<String> mainCharacterName (final List<Property> packets) {
-		for (final Property packet : packets) {
-			final String name = unwrapPacket(packet).ObjectName;
-			if (name == null || !name.startsWith("Player_") || !(packet instanceof ComplexProperty)) {
-				continue;
-			}
-
-			return ((ComplexProperty) packet)
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(components -> findSubComponent(components, "CharacterStats"))
-				.flatMap(stats -> stats.<DictionaryProperty>findProperty("Variables"))
-				.flatMap(variables -> variables.<Property>findEntry("OverrideName"))
-				.map(value -> value.obj)
-				.filter(value -> value instanceof String && !((String) value).trim().isEmpty())
-				.map(String.class::cast);
-		}
-
-		return Optional.empty();
+		return SaveModel.of(packets).player()
+			.flatMap(player -> player.component("CharacterStats"))
+			.flatMap(stats -> stats.get("OverrideName"))
+			.filter(value -> value instanceof String && !((String) value).trim().isEmpty())
+			.map(String.class::cast);
 	}
 
 	// The handful of settings saveinfo.xml keeps its own copy of, so the load
@@ -342,78 +329,56 @@ public class ChangesSaver implements Runnable {
 		// finds its character's edits at once rather than by a search.
 		final Map<String, SaveWriteCommand.CharacterUpdate> charactersByGuid = command.getCharacters();
 
-		final List<Property> updatedMobileObjects = deserialized.get().getPackets().stream()
-			.map(packet -> updateMobileObject(deserializer, packet, command, charactersByGuid))
-			.collect(Collectors.toList());
+		final List<Property> packets = deserialized.get().getPackets();
+		final SaveModel save = SaveModel.of(packets);
 
-		deserialized.get().setPackets(updatedMobileObjects);
-		deserialized.get().replace(mobileObjectsFile);
-		return updatedMobileObjects;
-	}
+		final Optional<SaveObject> player = save.player();
+		if (player.isPresent()) {
+			updateCurrency(player.get(), (float) command.getCurrency());
 
-	private static Property updateMobileObject (
-		final PacketDeserializer deserializer
-		, final Property property
-		, final SaveWriteCommand command
-		, final Map<String, SaveWriteCommand.CharacterUpdate> charactersByGuid) {
+			// Absent when the save records none, and from any request made
+			// before the party dialog could change it.
+			if (command.getCampingSupplies() != null) {
+				updateCampingSupplies(player.get(), command.getCampingSupplies());
+			}
+		}
 
-		final ObjectPersistencePacket packet = unwrapPacket(property);
-		final float currency = (float) command.getCurrency();
+		save.worldGlobal().ifPresent(global ->
+			updateGlobal(deserializer, global, command.getGlobals().get("Global")));
+		save.inGameGlobal().ifPresent(global ->
+			updateGlobal(deserializer, global, command.getGlobals().get("InGameGlobal")));
 
-		if (packet.ObjectName != null) {
-			if (packet.ObjectName.toLowerCase().startsWith("player_")) {
-				updateCurrency((ComplexProperty) property, currency);
+		for (final SaveObject object : save.objects()) {
+			final SaveWriteCommand.CharacterUpdate character =
+				object.id() != null ? charactersByGuid.get(object.id()) : null;
 
-				// Absent when the save records none, and from any request made
-				// before the party dialog could change it.
-				if (command.getCampingSupplies() != null) {
-					updateCampingSupplies((ComplexProperty) property, command.getCampingSupplies());
+			if (character != null) {
+				updateComponent(deserializer, object, "CharacterStats", character.getStats());
+
+				// A portrait is two plain strings on a different component, so
+				// it rides the same scalar path rather than needing its own
+				// write tier. Absent when the character has no Portrait at all.
+				final Map<String, String> portraitPaths = character.getPortraitPaths();
+				if (!portraitPaths.isEmpty()) {
+					updateComponent(deserializer, object, "Portrait", portraitPaths);
+				}
+
+				// A heal is the game's own flag for a full refill on the first
+				// frame after the load, on the Health component.
+				final Map<String, String> health = character.getHealth();
+				if (!health.isEmpty()) {
+					updateComponent(deserializer, object, "Health", health);
 				}
 			}
-
-			if (packet.ObjectName.startsWith("Global")) {
-				updateGlobal(deserializer, (ComplexProperty) property, command.getGlobals().get("Global"));
-			}
-
-			if (packet.ObjectName.startsWith("InGameGlobal")) {
-				updateGlobal(
-					deserializer, (ComplexProperty) property, command.getGlobals().get("InGameGlobal"));
-			}
 		}
 
-		final SaveWriteCommand.CharacterUpdate character = packet.ObjectID != null
-			? charactersByGuid.get(packet.ObjectID)
-			: null;
-
-		if (character != null) {
-			updateCharacter(deserializer, (ComplexProperty) property, character.getStats());
-
-			// A portrait is two plain strings on a different component, so
-			// it rides the same scalar path rather than needing its own
-			// write tier. Absent when the character has no Portrait at all.
-			final Map<String, String> portraitPaths = character.getPortraitPaths();
-			if (!portraitPaths.isEmpty()) {
-				updateComponent(
-					deserializer, (ComplexProperty) property, "Portrait", portraitPaths);
-			}
-
-			// A heal is the game's own flag for a full refill on the first
-			// frame after the load, on the Health component.
-			final Map<String, String> health = character.getHealth();
-			if (!health.isEmpty()) {
-				updateComponent(deserializer, (ComplexProperty) property, "Health", health);
-			}
-		}
-
-		return property;
+		deserialized.get().replace(mobileObjectsFile);
+		return packets;
 	}
 
-	private static void updateCurrency (final ComplexProperty root, final float currency) {
-		final Optional<ComplexProperty> currencyValue = root
-			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-			.flatMap(components -> findSubComponent(components, "PlayerInventory"))
-			.flatMap(playerInventory -> playerInventory.<DictionaryProperty>findProperty("Variables"))
-			.flatMap(variables -> variables.findEntry("currencyTotalValue"));
+	private static void updateCurrency (final SaveObject player, final float currency) {
+		final Optional<Property> currencyValue = player.component("PlayerInventory")
+			.flatMap(inventory -> inventory.variable("currencyTotalValue"));
 
 		if (!currencyValue.isPresent()) {
 			logger.error("Unable to navigate property structure when updating currency!%n");
@@ -423,12 +388,9 @@ public class ChangesSaver implements Runnable {
 		Property.update(currencyValue.get(), "v", currency);
 	}
 
-	private static void updateCampingSupplies (final ComplexProperty root, final int count) {
-		final Optional<Property> supplies = root
-			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-			.flatMap(components -> findSubComponent(components, "PlayerInventory"))
-			.flatMap(playerInventory -> playerInventory.<DictionaryProperty>findProperty("Variables"))
-			.flatMap(variables -> variables.findEntry("campingSupplies"));
+	private static void updateCampingSupplies (final SaveObject player, final int count) {
+		final Optional<Property> supplies = player.component("PlayerInventory")
+			.flatMap(inventory -> inventory.variable("campingSupplies"));
 
 		if (!supplies.isPresent()) {
 			logger.error("Unable to find campingSupplies when updating the player's inventory!%n");
@@ -440,26 +402,17 @@ public class ChangesSaver implements Runnable {
 	}
 
 	private static void updateGlobal (
-		final PacketDeserializer deserializer, final ComplexProperty root,
-		final Map<String, Map<String, String>> global) {
-		if (global == null) {
+		final PacketDeserializer deserializer, final SaveObject global,
+		final Map<String, Map<String, String>> updates) {
+		if (updates == null) {
 			return;
 		}
 
-		final Optional<SingleDimensionalArrayProperty> packetsProperty =
-			root.findProperty("ComponentPackets");
-
-		if (!packetsProperty.isPresent()) {
-			logger.error("Unable to navigate property structure when updating globals.%n");
-			return;
-		}
-
-		for (final Map.Entry<String, Map<String, String>> entry : global.entrySet()) {
+		for (final Map.Entry<String, Map<String, String>> entry : updates.entrySet()) {
 			final String updateKey = entry.getKey();
-			final Optional<ComplexProperty> packetProperty =
-				findSubComponent(packetsProperty.get(), updateKey);
+			final Optional<Component> component = global.component(updateKey);
 
-			if (!packetProperty.isPresent()) {
+			if (!component.isPresent()) {
 				logger.error(
 					"Client tried to update global ComponentPacket '%s' "
 						+ "which did not exist in the saved data.%n",
@@ -467,10 +420,8 @@ public class ChangesSaver implements Runnable {
 				continue;
 			}
 
-			final ComponentPersistencePacket packet =
-				(ComponentPersistencePacket) packetProperty.get().obj;
 			final Optional<DictionaryProperty> variables =
-				packetProperty.get().findProperty("Variables");
+				component.get().property().findProperty("Variables");
 
 			if (!variables.isPresent()) {
 				logger.error(
@@ -479,7 +430,7 @@ public class ChangesSaver implements Runnable {
 				continue;
 			}
 
-			if (packet.TypeString.equals("GlobalVariables")) {
+			if ("GlobalVariables".equals(component.get().type())) {
 				updateHashtable(deserializer, variables.get(), entry.getValue());
 			} else {
 				updateVariables(deserializer, variables.get(), entry.getValue());
@@ -487,24 +438,15 @@ public class ChangesSaver implements Runnable {
 		}
 	}
 
-	private static void updateCharacter (
-		final PacketDeserializer deserializer, final ComplexProperty root,
-		final Map<String, String> character) {
-
-		updateComponent(deserializer, root, "CharacterStats", character);
-	}
-
 	/** Writes a set of scalars onto one named component of a game object. */
 	private static void updateComponent (
 		final PacketDeserializer deserializer
-		, final ComplexProperty root
+		, final SaveObject object
 		, final String component
 		, final Map<String, String> updates) {
 
-		final Optional<DictionaryProperty> variables = root
-			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-			.flatMap(components -> findSubComponent(components, component))
-			.flatMap(found -> found.findProperty("Variables"));
+		final Optional<DictionaryProperty> variables = object.component(component)
+			.flatMap(found -> found.property().findProperty("Variables"));
 
 		if (!variables.isPresent()) {
 			logger.error(
