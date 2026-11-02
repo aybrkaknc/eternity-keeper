@@ -18,15 +18,12 @@
 
 package uk.me.mantas.eternity.save;
 
-import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
-import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.save.QuestTrackerBlob.Tracker;
-import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
-import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
+import uk.me.mantas.eternity.save.model.SaveModel;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
-import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 
 import java.util.List;
 import java.util.Optional;
@@ -63,7 +60,9 @@ public class QuestRestorer {
 	 * it failed. Returns false only on structural surprises (no QuestManager,
 	 * unparseable blob); an absent or unfailed tracker is a successful no-op.
 	 */
-	public static boolean restore (final List<Property> packets, final String questPath) {
+	public static boolean restore (final List<Property> packets, final String questPath)
+		throws WriteRefusedException {
+
 		final Optional<Property> blobProperty = findQuestTrackers(packets);
 		if (!blobProperty.isPresent()) {
 			logger.error("Save has no QuestManager.QuestTrackers blob.%n");
@@ -104,7 +103,9 @@ public class QuestRestorer {
 		return true;
 	}
 
-	private static void restoreDurance (final List<Property> packets, final Tracker tracker) {
+	private static void restoreDurance (final List<Property> packets, final Tracker tracker)
+		throws WriteRefusedException {
+
 		tracker.clearTriggeredEvent(DURANCE_DEATH_EVENT);
 
 		int restoredState = 1; // he joined, or his quest would have no tracker
@@ -115,15 +116,17 @@ public class QuestRestorer {
 			}
 		}
 
-		final Optional<Property> global = findGlobal(packets, DURANCE_STATE_GLOBAL);
-		if (!global.isPresent()) {
+		final SaveModel save = SaveModel.of(packets);
+		final Optional<Object> current = save.globalVariable(DURANCE_STATE_GLOBAL);
+		if (!current.isPresent()) {
 			logger.warn("Global '%s' not found; skipping.%n", DURANCE_STATE_GLOBAL);
 			return;
 		}
 
-		final Object current = ((SimpleProperty) global.get()).value;
-		if (current instanceof Number && ((Number) current).intValue() == DURANCE_DEATH_STATE) {
-			Property.update(global.get(), restoredState);
+		if (current.get() instanceof Number
+			&& ((Number) current.get()).intValue() == DURANCE_DEATH_STATE) {
+
+			save.setGlobalVariable(DURANCE_STATE_GLOBAL, restoredState);
 			logger.info(
 				"Restored %s from %d to %d.%n"
 				, DURANCE_STATE_GLOBAL, DURANCE_DEATH_STATE, restoredState);
@@ -132,53 +135,11 @@ public class QuestRestorer {
 
 	/** The QuestTrackers Byte[] property inside InGameGlobal's QuestManager. */
 	public static Optional<Property> findQuestTrackers (final List<Property> packets) {
-		for (final Property p : packets) {
-			if (!(p.obj instanceof ObjectPersistencePacket)) continue;
-			final ObjectPersistencePacket packet = (ObjectPersistencePacket) p.obj;
-			if (packet.ObjectName == null || !packet.ObjectName.startsWith("InGameGlobal")) {
-				continue;
-			}
-
-			final Optional<Property> blob = ((ComplexProperty) p)
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(c -> EKUtils.findSubComponent(c, "QuestManager"))
-				.flatMap(q -> q.<DictionaryProperty>findProperty("Variables"))
-				.flatMap(v -> v.findEntry("QuestTrackers"));
-
-			if (blob.isPresent()
-				&& blob.get() instanceof SimpleProperty
-				&& ((SimpleProperty) blob.get()).value instanceof Byte[]) {
-
-				return blob;
-			}
-		}
-
-		return Optional.empty();
-	}
-
-	private static Optional<Property> findGlobal (
-		final List<Property> packets, final String name) {
-
-		for (final Property p : packets) {
-			if (!(p.obj instanceof ObjectPersistencePacket)) continue;
-			final ObjectPersistencePacket packet = (ObjectPersistencePacket) p.obj;
-			if (packet.ObjectName == null || !packet.ObjectName.startsWith("InGameGlobal")) {
-				continue;
-			}
-
-			final Optional<Property> entry = ((ComplexProperty) p)
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(c -> EKUtils.findSubComponent(c, "GlobalVariables"))
-				.flatMap(g -> g.<DictionaryProperty>findProperty("Variables"))
-				.flatMap(v -> v.<DictionaryProperty>findEntry("m_data"))
-				.flatMap(d -> ((DictionaryProperty) d).findEntry(name));
-
-			if (entry.isPresent()) {
-				return entry;
-			}
-		}
-
-		return Optional.empty();
+		return SaveModel.of(packets).inGameGlobal()
+			.flatMap(global -> global.component("QuestManager"))
+			.flatMap(quests -> quests.variable("QuestTrackers"))
+			.filter(blob -> blob instanceof SimpleProperty
+				&& ((SimpleProperty) blob).value instanceof Byte[]);
 	}
 
 	private static byte[] unbox (final Byte[] boxed) {
