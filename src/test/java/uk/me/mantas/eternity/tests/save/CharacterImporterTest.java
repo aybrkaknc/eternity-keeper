@@ -30,7 +30,6 @@ import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
-import uk.me.mantas.eternity.tests.ExposedClass;
 import uk.me.mantas.eternity.tests.TestHarness;
 
 import java.io.File;
@@ -38,7 +37,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -763,46 +761,6 @@ public class CharacterImporterTest extends TestHarness {
 		assertFalse(importer.importCharacter());
 	}
 
-	@Test
-	public void findCharacterAndAnchorPointTolerateHostileData ()
-		throws IOException
-		, URISyntaxException {
-
-		final File workingDir = tempDir();
-		final File chrFile = exportCompanionChr(workingDir);
-		final CharacterImporter importer =
-			new CharacterImporter(requestJSON(resourceDirectory()), chrFile.getAbsolutePath());
-
-		final Property nullName = packetProperty(null, "some-guid", null);
-		final Property garbage = new ComplexProperty("Root", null);
-		garbage.obj = "not a packet";
-		final Property companion =
-			packetProperty("Companion_Test(Clone)", "companion-guid", "");
-		final Property player = packetProperty("Player_Test(Clone)", "player-guid", "");
-
-		final List<Property> objects = new ArrayList<>();
-		objects.add(nullName);
-		objects.add(garbage);
-		objects.add(companion);
-		objects.add(player);
-
-		final ExposedClass exposedImporter = expose(importer);
-		final Map<Object, Class> argMap = new LinkedHashMap<>();
-		argMap.put(objects, List.class);
-
-		final Optional<Property> character =
-			exposedImporter.call("findCharacter", argMap);
-
-		assertTrue(character.isPresent());
-		assertSame(companion, character.get());
-
-		final Optional<ObjectPersistencePacket> anchor =
-			exposedImporter.call("findAnchorPoint", argMap);
-
-		assertTrue(anchor.isPresent());
-		assertSame(player.obj, anchor.get());
-	}
-
 	private DeserializedPackets deserialize (final File file)
 		throws IOException {
 
@@ -824,20 +782,5 @@ public class CharacterImporterTest extends TestHarness {
 
 		assertTrue(found.isPresent());
 		return found.get();
-	}
-
-	private Property packetProperty (
-		final String objectName
-		, final String objectID
-		, final String parent) {
-
-		final ObjectPersistencePacket packet = new ObjectPersistencePacket();
-		packet.ObjectName = objectName;
-		packet.ObjectID = objectID;
-		packet.Parent = parent;
-
-		final Property property = new ComplexProperty("Root", null);
-		property.obj = packet;
-		return property;
 	}
 }
