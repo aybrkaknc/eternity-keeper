@@ -25,8 +25,6 @@ import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.Settings;
 import uk.me.mantas.eternity.game.AIController;
-import uk.me.mantas.eternity.game.ComponentPersistencePacket;
-import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.save.CompanionRegistry.Companion;
 import uk.me.mantas.eternity.save.model.Component;
 import uk.me.mantas.eternity.save.model.SaveModel;
@@ -40,8 +38,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 
-import static uk.me.mantas.eternity.EKUtils.findComponent;
-import static uk.me.mantas.eternity.EKUtils.unwrapPacket;
 import static uk.me.mantas.eternity.game.UnityEngine.Vector3;
 
 /**
@@ -204,12 +200,10 @@ public class Resurrector {
 		final List<Property> retainedDead = new ArrayList<>();
 		int purged = 0;
 		for (final Property p : dead.getPackets()) {
-			if (p.obj instanceof ObjectPersistencePacket) {
-				final String parent = ((ObjectPersistencePacket) p.obj).Parent;
-				if (parent != null && startsWith(parent, objectNamePrefix)) {
-					purged++;
-					continue;
-				}
+			final String parent = SaveObject.of(p).map(SaveObject::parent).orElse(null);
+			if (parent != null && startsWith(parent, objectNamePrefix)) {
+				purged++;
+				continue;
 			}
 
 			retainedDead.add(p);
@@ -224,13 +218,14 @@ public class Resurrector {
 			final Iterator<Property> it = retainedDead.iterator();
 			int purgedLinked = 0;
 			while (it.hasNext()) {
-				final Property p = it.next();
-				if (!(p.obj instanceof ObjectPersistencePacket)) continue;
-				final ObjectPersistencePacket packet = (ObjectPersistencePacket) p.obj;
+				final Optional<SaveObject> object = SaveObject.of(it.next());
+				if (!object.isPresent()) continue;
+				final String name = object.get().name();
+				final String parent = object.get().parent();
 				final boolean isCreature =
-					packet.ObjectName != null && startsWith(packet.ObjectName, linkedCreaturePrefix);
+					name != null && startsWith(name, linkedCreaturePrefix);
 				final boolean ownedByCreature =
-					packet.Parent != null && startsWith(packet.Parent, linkedCreaturePrefix);
+					parent != null && startsWith(parent, linkedCreaturePrefix);
 
 				if (isCreature || ownedByCreature) {
 					it.remove();
@@ -265,11 +260,9 @@ public class Resurrector {
 		// graphs so ItemList/SerializedItemList/Equipment stay consistent.
 		final Set<String> deadIDs = new HashSet<>();
 		for (final Property p : retainedDead) {
-			if (p.obj instanceof ObjectPersistencePacket) {
-				final String id = ((ObjectPersistencePacket) p.obj).ObjectID;
-				if (id != null) {
-					deadIDs.add(id.toLowerCase());
-				}
+			final String id = SaveObject.of(p).map(SaveObject::id).orElse(null);
+			if (id != null) {
+				deadIDs.add(id.toLowerCase());
 			}
 		}
 
@@ -281,7 +274,7 @@ public class Resurrector {
 		// lists!" for three potions Edér came back holding.
 		final List<String> incomingIDs = new ArrayList<>();
 		for (final Property p : incoming) {
-			incomingIDs.add(((ObjectPersistencePacket) p.obj).ObjectID);
+			SaveObject.of(p).map(SaveObject::id).ifPresent(incomingIDs::add);
 		}
 
 		final Set<String> inAreas = GuidRemap.heldByAreas(saveDirectory, incomingIDs);
@@ -296,7 +289,7 @@ public class Resurrector {
 				continue;
 			}
 
-			final String id = ((ObjectPersistencePacket) p.obj).ObjectID;
+			final String id = SaveObject.of(p).map(SaveObject::id).orElse(null);
 			if (id != null && deadIDs.contains(id.toLowerCase())) {
 				remap.put(id, UUID.randomUUID());
 			}
@@ -326,7 +319,7 @@ public class Resurrector {
 		// A pet transplanted from a roster donor needs the same treatment,
 		// linked to its owner and parked in the pet slot band (6 + owner's).
 		if (linkedRoot != null) {
-			final String ownerID = unwrapPacket(root.get()).ObjectID;
+			final String ownerID = SaveObject.of(root.get()).map(SaveObject::id).orElse(null);
 			if (!joinParty(linkedRoot, linkedCreaturePrefix, 6 + freeSlot.get(), true
 				, AIController.AISummonType.AnimalCompanion
 				, ownerID != null ? UUID.fromString(ownerID) : null)) {
@@ -413,13 +406,11 @@ public class Resurrector {
 	private static List<Property> collectGraph (
 		final List<Property> packets, final Property root) {
 
-		final String rootName = unwrapPacket(root).ObjectName;
+		final String rootName = SaveObject.of(root).map(SaveObject::name).orElse(null);
 		final List<Property> graph = new ArrayList<>();
 		graph.add(root);
 		for (final Property p : packets) {
-			if (p.obj instanceof ObjectPersistencePacket
-				&& rootName.equals(((ObjectPersistencePacket) p.obj).Parent)) {
-
+			if (rootName != null && SaveObject.of(p).map(o -> rootName.equals(o.parent())).orElse(false)) {
 				graph.add(p);
 			}
 		}
@@ -446,9 +437,8 @@ public class Resurrector {
 		final List<Property> packets, final String objectNamePrefix) {
 
 		return packets.stream()
-			.filter(p -> p.obj instanceof ObjectPersistencePacket)
 			.filter(p -> {
-				final String name = ((ObjectPersistencePacket) p.obj).ObjectName;
+				final String name = SaveObject.of(p).map(SaveObject::name).orElse(null);
 				return name != null
 					&& startsWith(name, objectNamePrefix)
 					&& !name.endsWith("_stored");
@@ -458,18 +448,14 @@ public class Resurrector {
 
 	private static Optional<Integer> findFreeSlot (final List<Property> packets) {
 		final Set<Integer> used = new HashSet<>();
-		for (final Property p : packets) {
-			if (!(p.obj instanceof ObjectPersistencePacket)) continue;
-			final ObjectPersistencePacket packet = (ObjectPersistencePacket) p.obj;
-			if (packet.ComponentPackets == null) continue;
+		for (final SaveObject object : SaveModel.of(packets).objects()) {
+			final Optional<Component> ai = object.component("PartyMemberAI");
+			final Object slot = ai.flatMap(c -> c.get("AssignedSlot")).orElse(null);
 
-			final Optional<ComponentPersistencePacket> ai =
-				findComponent(packet.ComponentPackets, "PartyMemberAI");
+			if (ai.isPresent() && Boolean.TRUE.equals(ai.get().get("IsActiveInParty").orElse(null))
+				&& slot instanceof Integer) {
 
-			if (ai.isPresent() && Boolean.TRUE.equals(ai.get().Variables.get("IsActiveInParty"))
-				&& ai.get().Variables.get("AssignedSlot") instanceof Integer) {
-
-				used.add((Integer) ai.get().Variables.get("AssignedSlot"));
+				used.add((Integer) slot);
 			}
 		}
 

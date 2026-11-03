@@ -24,10 +24,14 @@ import org.junit.Test;
 import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.save.CharacterExporter;
+import uk.me.mantas.eternity.save.model.ComponentBuilder;
+import uk.me.mantas.eternity.save.model.SaveModel;
+import uk.me.mantas.eternity.serializer.TypePair;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
+import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 import uk.me.mantas.eternity.tests.ExposedClass;
 import uk.me.mantas.eternity.tests.TestHarness;
 
@@ -155,7 +159,7 @@ public class CharacterExporterTest extends TestHarness {
 		mobileObjects.add(unrelated);
 
 		final Map<Object, Class> argMap = new LinkedHashMap<>();
-		argMap.put(mobileObjects, List.class);
+		argMap.put(SaveModel.of(mobileObjects), SaveModel.class);
 
 		final ExposedClass exposedExporter = expose(exporter);
 		final List<Property> extracted =
@@ -185,7 +189,7 @@ public class CharacterExporterTest extends TestHarness {
 		mobileObjects.add(orphan);
 
 		final Map<Object, Class> argMap = new LinkedHashMap<>();
-		argMap.put(mobileObjects, List.class);
+		argMap.put(SaveModel.of(mobileObjects), SaveModel.class);
 
 		final ExposedClass exposedExporter = expose(exporter);
 		final List<Property> extracted =
@@ -200,13 +204,13 @@ public class CharacterExporterTest extends TestHarness {
 		, final String objectID
 		, final String parent) {
 
-		final ObjectPersistencePacket packet = new ObjectPersistencePacket();
-		packet.ObjectName = objectName;
-		packet.ObjectID = objectID;
-		packet.Parent = parent;
-
-		final Property property = new ComplexProperty("Root", null);
-		property.obj = packet;
+		// The tree's fields, which the exporter reads; any may hold nothing.
+		final ComplexProperty property =
+			new ComplexProperty("Root", new TypePair(ObjectPersistencePacket.class, null));
+		property.properties.add(ComponentBuilder.field("ObjectName", String.class, objectName));
+		property.properties.add(ComponentBuilder.field("ObjectID", String.class, objectID));
+		property.properties.add(ComponentBuilder.field("Parent", String.class, parent));
+		property.properties.add(new SingleDimensionalArrayProperty("ComponentPackets", null));
 		return property;
 	}
 

@@ -28,9 +28,9 @@ import uk.me.mantas.eternity.game.CompanionNames.Companions;
 import uk.me.mantas.eternity.game.ComponentPersistencePacket;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.save.model.Component;
+import uk.me.mantas.eternity.save.model.ComponentBuilder;
 import uk.me.mantas.eternity.save.model.SaveModel;
 import uk.me.mantas.eternity.save.model.SaveObject;
-import uk.me.mantas.eternity.serializer.CSharpCollection;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.TypePair;
 import uk.me.mantas.eternity.serializer.WriteRefusedException;
@@ -39,7 +39,6 @@ import uk.me.mantas.eternity.serializer.properties.*;
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
-import java.util.AbstractMap.SimpleEntry;
 
 import static uk.me.mantas.eternity.game.UnityEngine.Vector3;
 
@@ -62,15 +61,6 @@ public class PartyManager {
 	private static final Logger logger = Logger.getLogger(PartyManager.class);
 
 	// Exact C# type strings as written by the game (harvested from saves).
-	private static final String TYPE_OPP = "ObjectPersistencePacket, Assembly-CSharp";
-	private static final String TYPE_CPP = "ComponentPersistencePacket, Assembly-CSharp";
-	private static final String TYPE_STRING = "System.String, mscorlib";
-	private static final String TYPE_BOOL = "System.Boolean, mscorlib";
-	private static final String TYPE_INT = "System.Int32, mscorlib";
-	private static final String TYPE_GUID = "System.Guid, mscorlib";
-	private static final String TYPE_OBJECT = "System.Object, mscorlib";
-	private static final String TYPE_GUID_LIST =
-		"System.Collections.Generic.List`1[[System.Guid, mscorlib]], mscorlib";
 	private static final String TYPE_AGGRESSION = "AIController+AggressionType, Assembly-CSharp";
 	private static final String TYPE_SUMMON_TYPE = "AIController+AISummonType, Assembly-CSharp";
 	private static final String TYPE_COMPANIONS = "CompanionNames+Companions, Assembly-CSharp";
@@ -249,7 +239,7 @@ public class PartyManager {
 
 		final UUID recordGuid = UUID.randomUUID();
 		packets.add(buildStoredRecord(
-			recordGuid, unwrap(character), player.levelName(), animalGuid, true));
+			recordGuid, character, player.levelName(), animalGuid, true));
 		addGuidToList(storedGuids, recordGuid);
 
 		return true;
@@ -282,7 +272,7 @@ public class PartyManager {
 
 		final UUID recordGuid = UUID.randomUUID();
 		packets.add(buildStoredRecord(
-			recordGuid, unwrap(pet), currentLevel, ZERO_GUID, false));
+			recordGuid, pet, currentLevel, ZERO_GUID, false));
 		addGuidToList(storedAnimalGuids, recordGuid);
 
 		return UUID.fromString(pet.id());
@@ -428,60 +418,50 @@ public class PartyManager {
 		, final AISummonType summonType
 		, final UUID summoner) {
 
-		final LinkedHashMap<String, Property> vars = new LinkedHashMap<>();
-		vars.put("FormationStyle", simple(int.class, TYPE_INT, 3));
-		vars.put("AssignedSlot", simple(int.class, TYPE_INT, slot));
-		vars.put("Secondary", simple(boolean.class, TYPE_BOOL, secondary));
-		vars.put("AddedThroughScript", simple(boolean.class, TYPE_BOOL, true));
-		vars.put("m_prevWaypoint", new NullProperty(null));
-		vars.put("m_currentWaypoint", new NullProperty(null));
-		vars.put("IsInSlot", simple(boolean.class, TYPE_BOOL, true));
-		vars.put("IsActiveInParty", simple(boolean.class, TYPE_BOOL, true));
-		vars.put("Summoner", summoner == null
-			? new NullProperty(null)
-			: simple(UUID.class, TYPE_GUID, summoner));
-		vars.put("SummonType",
-			simple(AISummonType.class, TYPE_SUMMON_TYPE, summonType));
-		vars.put("Aggression",
-			simple(AggressionType.class, TYPE_AGGRESSION, AggressionType.DefendMyself));
-
-		return buildComponent("PartyMemberAI", vars);
+		return ComponentBuilder.of("PartyMemberAI")
+			.integer("FormationStyle", 3)
+			.integer("AssignedSlot", slot)
+			.bool("Secondary", secondary)
+			.bool("AddedThroughScript", true)
+			.nothing("m_prevWaypoint")
+			.nothing("m_currentWaypoint")
+			.bool("IsInSlot", true)
+			.bool("IsActiveInParty", true)
+			.guid("Summoner", summoner)
+			.constant("SummonType", summonType, TYPE_SUMMON_TYPE)
+			.constant("Aggression", AggressionType.DefendMyself, TYPE_AGGRESSION)
+			.build();
 	}
 
 	private ComplexProperty buildAIPackageController (
 		final AISummonType summonType
 		, final UUID summoner) {
 
-		final LinkedHashMap<String, Property> vars = new LinkedHashMap<>();
-		vars.put("Patroller", simple(boolean.class, TYPE_BOOL, false));
-		vars.put("m_prevWaypoint", new NullProperty(null));
-		vars.put("m_currentWaypoint", new NullProperty(null));
-		vars.put("IsActive", simple(boolean.class, TYPE_BOOL, true));
-		vars.put("Summoner", summoner == null
-			? new NullProperty(null)
-			: simple(UUID.class, TYPE_GUID, summoner));
-		vars.put("SummonType",
-			simple(AISummonType.class, TYPE_SUMMON_TYPE, summonType));
-		vars.put("Aggression",
-			simple(AggressionType.class, TYPE_AGGRESSION, AggressionType.DefendMyself));
-
-		return buildComponent("AIPackageController", vars);
+		return ComponentBuilder.of("AIPackageController")
+			.bool("Patroller", false)
+			.nothing("m_prevWaypoint")
+			.nothing("m_currentWaypoint")
+			.bool("IsActive", true)
+			.guid("Summoner", summoner)
+			.constant("SummonType", summonType, TYPE_SUMMON_TYPE)
+			.constant("Aggression", AggressionType.DefendMyself, TYPE_AGGRESSION)
+			.build();
 	}
 
 	// Builds the "<name>_stored" bookkeeping object the stronghold uses to
 	// describe a roster member.
 	private Property buildStoredRecord (
 		final UUID recordGuid
-		, final ObjectPersistencePacket character
+		, final SaveObject character
 		, final String currentLevel
 		, final UUID animalGuid
 		, final boolean hasRested) {
 
-		final ComplexProperty root =
-			new ComplexProperty("Root", new TypePair(ObjectPersistencePacket.class, TYPE_OPP));
+		final ComplexProperty root = new ComplexProperty(
+			"Root", new TypePair(ObjectPersistencePacket.class, ComponentBuilder.TYPE_OPP));
 
 		root.properties.add(field("ObjectName", String.class,
-			character.ObjectName + "_stored"));
+			character.name() + "_stored"));
 		root.properties.add(field("LevelName", String.class, currentLevel));
 		root.properties.add(field("PrefabResource", String.class, ""));
 		root.properties.add(field("Mobile", boolean.class, true));
@@ -498,44 +478,43 @@ public class PartyManager {
 			new SingleDimensionalArrayProperty(
 				"ComponentPackets"
 				, new TypePair(ComponentPersistencePacket[].class, null));
-		components.elementType = new TypePair(ComponentPersistencePacket.class, TYPE_CPP);
+		components.elementType =
+			new TypePair(ComponentPersistencePacket.class, ComponentBuilder.TYPE_CPP);
 		components.lowerBound = 0;
 
-		final LinkedHashMap<String, Property> instanceVars = new LinkedHashMap<>();
-		instanceVars.put("Guid", simple(UUID.class, TYPE_GUID, recordGuid));
-		components.items.add(buildComponent("InstanceID", instanceVars));
+		components.items.add(ComponentBuilder.of("InstanceID")
+			.guid("Guid", recordGuid)
+			.build());
 
-		final LinkedHashMap<String, Property> persistenceVars = new LinkedHashMap<>();
-		persistenceVars.put("m_objDestroyed", simple(boolean.class, TYPE_BOOL, false));
-		persistenceVars.put("IsActive", simple(boolean.class, TYPE_BOOL, true));
-		persistenceVars.put("UnloadsBetweenLevels", simple(boolean.class, TYPE_BOOL, false));
-		components.items.add(buildComponent("Persistence", persistenceVars));
+		components.items.add(ComponentBuilder.of("Persistence")
+			.bool("m_objDestroyed", false)
+			.bool("IsActive", true)
+			.bool("UnloadsBetweenLevels", false)
+			.build());
 
-		final LinkedHashMap<String, Property> storedVars = new LinkedHashMap<>();
-		storedVars.put("m_portraitSmallPath",
-			simple(String.class, TYPE_STRING, smallPortraitPath(character)));
-		storedVars.put("AttachedObjects", emptyGuidList());
-		storedVars.put("NamedCompanion",
-			simple(Companions.class, TYPE_COMPANIONS, namedCompanion(character)));
-		storedVars.put("GUID",
-			simple(UUID.class, TYPE_GUID, UUID.fromString(character.ObjectID)));
-		storedVars.put("DisplayName", simple(String.class, TYPE_STRING, displayName(character)));
-		storedVars.put("AnimalCompanionGUID", simple(UUID.class, TYPE_GUID, animalGuid));
-		storedVars.put("HasRested", simple(boolean.class, TYPE_BOOL, hasRested));
-		components.items.add(buildComponent("StoredCharacterInfo", storedVars));
+		components.items.add(ComponentBuilder.of("StoredCharacterInfo")
+			.text("m_portraitSmallPath", smallPortraitPath(character))
+			.emptyGuidList("AttachedObjects")
+			.constant("NamedCompanion", namedCompanion(character), TYPE_COMPANIONS)
+			.guid("GUID", UUID.fromString(character.id()))
+			.text("DisplayName", displayName(character))
+			.guid("AnimalCompanionGUID", animalGuid)
+			.bool("HasRested", hasRested)
+			.build());
 
 		root.properties.add(components);
 		root.obj = recordPacket(recordGuid, character, currentLevel);
 		return root;
 	}
 
+	// The header-only mirror every object this editor makes keeps.
 	private ObjectPersistencePacket recordPacket (
 		final UUID recordGuid
-		, final ObjectPersistencePacket character
+		, final SaveObject character
 		, final String currentLevel) {
 
 		final ObjectPersistencePacket record = new ObjectPersistencePacket();
-		record.ObjectName = character.ObjectName + "_stored";
+		record.ObjectName = character.name() + "_stored";
 		record.LevelName = currentLevel;
 		record.ObjectID = recordGuid.toString();
 		record.GUID = recordGuid;
@@ -543,54 +522,8 @@ public class PartyManager {
 		return record;
 	}
 
-	static ComplexProperty buildComponent (
-		final String typeString
-		, final LinkedHashMap<String, Property> variables) {
-
-		final ComplexProperty component =
-			new ComplexProperty(null, new TypePair(ComponentPersistencePacket.class, null));
-
-		final SimpleProperty type =
-			new SimpleProperty("TypeString", new TypePair(String.class, null));
-		type.value = typeString;
-		type.obj = typeString;
-		component.properties.add(type);
-
-		final DictionaryProperty dict =
-			new DictionaryProperty("Variables", new TypePair(HashMap.class, null));
-		dict.keyType = new TypePair(String.class, TYPE_STRING);
-		dict.valueType = new TypePair(Object.class, TYPE_OBJECT);
-
-		for (final Map.Entry<String, Property> variable : variables.entrySet()) {
-			final SimpleProperty key =
-				new SimpleProperty(null, new TypePair(String.class, null));
-			key.value = variable.getKey();
-			key.obj = variable.getKey();
-			dict.items.add(new SimpleEntry<>(key, variable.getValue()));
-		}
-
-		component.properties.add(dict);
-		return component;
-	}
-
-	static SimpleProperty simple (
-		final Class javaType
-		, final String cSharpType
-		, final Object value) {
-
-		final SimpleProperty property =
-			new SimpleProperty(null, new TypePair(javaType, cSharpType));
-		property.value = value;
-		property.obj = value;
-		return property;
-	}
-
 	private SimpleProperty field (final String name, final Class javaType, final Object value) {
-		final SimpleProperty property =
-			new SimpleProperty(name, new TypePair(javaType, null));
-		property.value = value;
-		property.obj = value;
-		return property;
+		return ComponentBuilder.field(name, javaType, value);
 	}
 
 	private ComplexProperty zeroVector (final String name) {
@@ -602,46 +535,30 @@ public class PartyManager {
 		return vector;
 	}
 
-	private CollectionProperty emptyGuidList () {
-		final CollectionProperty list =
-			new CollectionProperty(null, new TypePair(CSharpCollection.class, TYPE_GUID_LIST));
-		list.elementType = new TypePair(UUID.class, TYPE_GUID);
-		list.properties.add(field("Capacity", int.class, 0));
-		return list;
-	}
-
 	// -------------------- naming helpers --------------------
 
-	private String displayName (final ObjectPersistencePacket character) {
-		final Optional<ComponentPersistencePacket> stats =
-			EKUtils.findComponent(character.ComponentPackets, "CharacterStats");
+	private String displayName (final SaveObject character) {
+		final Object override = character.component("CharacterStats")
+			.flatMap(stats -> stats.get("OverrideName"))
+			.orElse(null);
 
-		if (stats.isPresent()) {
-			final Object override = stats.get().Variables.get("OverrideName");
-			if (override instanceof String && !((String) override).isEmpty()) {
-				return (String) override;
-			}
+		if (override instanceof String && !((String) override).isEmpty()) {
+			return (String) override;
 		}
 
-		return EKUtils.extractCharacterName(character.ObjectName);
+		return EKUtils.extractCharacterName(character.name());
 	}
 
-	private String smallPortraitPath (final ObjectPersistencePacket character) {
-		final Optional<ComponentPersistencePacket> portrait =
-			EKUtils.findComponent(character.ComponentPackets, "Portrait");
+	private String smallPortraitPath (final SaveObject character) {
+		final Object path = character.component("Portrait")
+			.flatMap(portrait -> portrait.get("m_textureSmallPath"))
+			.orElse(null);
 
-		if (portrait.isPresent()) {
-			final Object path = portrait.get().Variables.get("m_textureSmallPath");
-			if (path instanceof String) {
-				return (String) path;
-			}
-		}
-
-		return "";
+		return path instanceof String ? (String) path : "";
 	}
 
-	private Companions namedCompanion (final ObjectPersistencePacket character) {
-		final String name = EKUtils.extractCharacterName(character.ObjectName);
+	private Companions namedCompanion (final SaveObject character) {
+		final String name = EKUtils.extractCharacterName(character.name());
 		if (name.equals("GM")) {
 			return Companions.Mother;
 		}
@@ -683,13 +600,6 @@ public class PartyManager {
 	}
 
 	// -------------------- lookups --------------------
-
-	// The builders below still read the deserializer's mirror of an object;
-	// the tree and the mirror agree until an edit, and the builders only read
-	// what this class never edits.
-	private ObjectPersistencePacket unwrap (final SaveObject object) {
-		return (ObjectPersistencePacket) object.property().obj;
-	}
 
 	public boolean isInParty (final Property character) {
 		return SaveObject.of(character)

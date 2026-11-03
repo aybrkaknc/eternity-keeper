@@ -25,13 +25,13 @@ import org.cef.handler.CefMessageRouterHandlerAdapter;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.environment.Environment;
-import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.save.ItemCatalog;
 import uk.me.mantas.eternity.save.Loadout;
 import uk.me.mantas.eternity.save.SavedGameOpener;
+import uk.me.mantas.eternity.save.model.SaveModel;
+import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.WriteRefusedException;
 import uk.me.mantas.eternity.serializer.properties.Property;
@@ -172,8 +172,8 @@ public class ReadLoadout extends CefMessageRouterHandlerAdapter {
 	}
 
 	private static String prefabIn (final List<Property> packets, final String guid) {
-		return EKUtils.findPacketById(packets, guid)
-			.map(packet -> ((ObjectPersistencePacket) packet.obj).ObjectName)
+		return SaveModel.of(packets).object(guid)
+			.map(SaveObject::name)
 			.map(name -> name.replace("(Clone)", "").trim())
 			.orElse("");
 	}

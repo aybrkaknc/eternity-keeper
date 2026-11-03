@@ -22,7 +22,8 @@ package uk.me.mantas.eternity.save;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.factory.PacketDeserializerFactory;
-import uk.me.mantas.eternity.game.ObjectPersistencePacket;
+import uk.me.mantas.eternity.save.model.SaveModel;
+import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.ShortReadException;
@@ -105,9 +106,8 @@ public class CharacterExporter {
 			return false;
 		}
 
-		final List<Property> mobileObjects = deserialized.get().getPackets();
 		final SimpleProperty count = deserialized.get().getCount();
-		final List<Property> extractedObjects = extractCharactersObjects(mobileObjects);
+		final List<Property> extractedObjects = extractCharactersObjects(SaveModel.of(deserialized.get()));
 		if (extractedObjects.size() < 1) {
 			return false;
 		}
@@ -119,44 +119,25 @@ public class CharacterExporter {
 		return true;
 	}
 
-	private List<Property> extractCharactersObjects (
-		List<Property> mobileObjects) {
+	private List<Property> extractCharactersObjects (final SaveModel save) {
+		final List<Property> objs = new ArrayList<>();
 
-		List<Property> objs = new ArrayList<>();
-
-		// Real saves contain packets with null ObjectIDs, Parents and
+		// Real saves contain objects with null ObjectIDs, Parents and
 		// ObjectNames so we match null-safely with the GUID/name on the left.
-		String objectName = null;
-		for (Property property : mobileObjects) {
-			Optional<ObjectPersistencePacket> packet = unwrapProperty(property);
-			if (packet.isPresent() && guid.equals(packet.get().ObjectID)) {
-				objectName = packet.get().ObjectName;
-				break;
-			}
-		}
+		final String objectName = save.objects().stream()
+			.filter(object -> guid.equals(object.id()))
+			.findFirst()
+			.map(SaveObject::name)
+			.orElse(null);
 
-		for (Property property : mobileObjects) {
-			Optional<ObjectPersistencePacket> maybePacket = unwrapProperty(property);
-			if (!maybePacket.isPresent()) {
-				continue;
-			}
+		for (final SaveObject object : save.objects()) {
+			if (guid.equals(object.id())
+				|| (objectName != null && objectName.equals(object.parent()))) {
 
-			ObjectPersistencePacket packet = maybePacket.get();
-			if (guid.equals(packet.ObjectID)
-				|| (objectName != null && objectName.equals(packet.Parent))) {
-
-				objs.add(property);
+				objs.add(object.property());
 			}
 		}
 
 		return objs;
-	}
-
-	private Optional<ObjectPersistencePacket> unwrapProperty (Property property) {
-		if (property.obj instanceof ObjectPersistencePacket) {
-			return Optional.of((ObjectPersistencePacket) property.obj);
-		}
-
-		return Optional.empty();
 	}
 }
