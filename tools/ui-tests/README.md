@@ -104,7 +104,9 @@ exported and imported over himself in a later save of the same playthrough;
 `ingame_swap.py` one with the prologue game's Watcher imported over the Caed
 Nua game's, and checks in the file that it stays in the Caed Nua
 playthrough; `ingame_iron.py` one with the Trial of Iron switch flipped (off by default,
-on for the save `EK_IRON_SAVE` names); `filedialog.py` answers the native
+on for the save `EK_IRON_SAVE` names); `ingame_capacity.py` one with a ring
+added to a stash that had room written for exactly its sixteen items, so the
+list's `Capacity` is raised to seventeen; `filedialog.py` answers the native
 file dialogs the editor opens. They are not pass/fail suites: each leaves its
 save in the test-env saves folder and writes what to look for in the game
 beside the suites' other output. [docs/testing.md](../../docs/testing.md)

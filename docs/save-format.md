@@ -46,7 +46,12 @@ A list's `Capacity`, written beside its items, was measured on 2026-11-03 over
 2,283 packet files (the test environment's saves and 15 real ones, read in
 place): never below the list's length, and often above it, in .NET's growth
 steps (4, 8, 16, 32, 64, 512). `GuidList` and `ItemContainer` raise it to the
-length when an add passes it, and never lower it.
+length when an add passes it, and never lower it. Loaded in the game on
+2026-11-03 (`tools/ui-tests/ingame_capacity.py`: the prologue playthrough's
+stash, 16 items with a `Capacity` of 16, given a seventeenth): the stash
+showed all 17, the Minor Ring of Deflection among them, and `Player.log` held
+no `Exception` and no `already exists`. The game does not need the extra room
+a .NET list keeps; a `Capacity` equal to the length loads.
 
 ## Save structure map (from live dump of a real save)
 
