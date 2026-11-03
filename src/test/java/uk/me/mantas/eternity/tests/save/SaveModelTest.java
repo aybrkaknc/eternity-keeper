@@ -32,11 +32,13 @@ import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.save.model.TypedValue;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
+import uk.me.mantas.eternity.serializer.TypePair;
 import uk.me.mantas.eternity.serializer.WriteRefusedException;
 import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
 import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
+import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 import uk.me.mantas.eternity.tests.TestHarness;
 
 import java.io.File;
@@ -244,13 +246,17 @@ public class SaveModelTest extends TestHarness {
 	}
 
 	// Real saves hold packets with no ObjectName, and the odd entry that is
-	// not a game object at all.
+	// not a game object at all. An object is known by the tree alone: one the
+	// editor built has no mirror to go by.
 	@Test
 	public void objectsWithNoNameAndEntriesThatAreNoObjectsAreTolerated () throws Exception {
 		final ComplexProperty garbage = new ComplexProperty("Root", null);
-		garbage.obj = "not a packet";
+		garbage.obj = new ObjectPersistencePacket();
+		final ComplexProperty noComponents =
+			new ComplexProperty("Root", new TypePair(ObjectPersistencePacket.class, null));
+		noComponents.properties.add(field("ObjectID", "no-components"));
 		final List<Property> packets = Arrays.asList(
-			packet(null, "some-guid"), garbage
+			packet(null, "some-guid"), garbage, noComponents
 			, packet("Companion_Test(Clone)", "companion-guid"), packet("Player_Test(Clone)", "player-guid"));
 
 		final SaveModel save = SaveModel.of(packets);
@@ -259,16 +265,50 @@ public class SaveModelTest extends TestHarness {
 		assertFalse(save.objects().get(0).isCompanion());
 		assertEquals("player-guid", save.player().get().id());
 		assertFalse(SaveObject.of(garbage).isPresent());
-		assertEquals("companion-guid", SaveObject.of(packets.get(2)).get().id());
+		assertFalse(SaveObject.of(noComponents).isPresent());
+		assertEquals("companion-guid", SaveObject.of(packets.get(3)).get().id());
 		assertFalse(save.inGameGlobal().isPresent());
 	}
 
-	private static Property packet (final String name, final String id) {
-		final ComplexProperty packet = new ComplexProperty("Root", null);
-		packet.obj = new ObjectPersistencePacket();
+	private static ComplexProperty packet (final String name, final String id) {
+		final ComplexProperty packet =
+			new ComplexProperty("Root", new TypePair(ObjectPersistencePacket.class, null));
 		packet.properties.add(field("ObjectName", name));
 		packet.properties.add(field("ObjectID", id));
+		packet.properties.add(new SingleDimensionalArrayProperty("ComponentPackets", null));
 		return packet;
+	}
+
+	// The model is the file's own list: what it adds and removes is what the
+	// file holds, and what is put in the list some other way is seen.
+	@Test
+	public void objectsAreAddedToAndRemovedFromTheFilesOwnList () throws Exception {
+		final File file = fixture();
+		final DeserializedPackets packets = read(file);
+		final SaveModel save = SaveModel.of(packets);
+		final int before = packets.getPackets().size();
+
+		final SaveObject calisca = save.object(COMPANION_GUID).get();
+		save.remove(calisca);
+		assertEquals(before - 1, packets.getPackets().size());
+		assertFalse(save.object(COMPANION_GUID).isPresent());
+		assertRefused(() -> save.remove(calisca), "Companion_Calisca");
+
+		save.add(calisca);
+		assertSame(calisca.property(), packets.getPackets().get(before - 1));
+		assertTrue(save.object(COMPANION_GUID).isPresent());
+		assertRefused(() -> save.add(calisca), COMPANION_GUID);
+
+		final ComplexProperty newcomer = packet("Newcomer", "newcomer-guid");
+		packets.getPackets().add(newcomer);
+		assertSame(newcomer, save.object("NEWCOMER-GUID").get().property());
+		save.remove(save.object("newcomer-guid").get());
+
+		save.remove(save.player().get());
+		packets.replace(file);
+		final DeserializedPackets after = read(file);
+		assertEquals(before - 1, after.getPackets().size());
+		assertFalse(SaveModel.of(after).player().isPresent());
 	}
 
 	private static SimpleProperty field (final String name, final Object value) {
@@ -322,7 +362,9 @@ public class SaveModelTest extends TestHarness {
 
 		assertRefused(() -> player.remove(calisca.component("Health").get()), "Health");
 
-		final SaveObject bare = SaveObject.of(packet("Bare", "1")).get();
+		final ComplexProperty broken = packet("Bare", "1");
+		broken.properties.set(2, field("ComponentPackets", null));
+		final SaveObject bare = SaveObject.of(broken).get();
 		assertRefused(() -> bare.add(ai.property()), "Bare");
 	}
 

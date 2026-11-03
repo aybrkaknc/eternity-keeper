@@ -42,10 +42,19 @@ public final class SaveObject {
 		this.packet = packet;
 	}
 
-	/** The game object this entry of a file is, unless it is not one. */
+	/**
+	 * The game object this entry of a file is, unless it is not one: known by
+	 * the tree alone -- an ObjectPersistencePacket with an ObjectID and
+	 * components -- since an object the editor built has no mirror to go by.
+	 */
 	public static Optional<SaveObject> of (final Property packet) {
 		// The odd entry of a real save is not a game object at all.
-		if (packet instanceof ComplexProperty && packet.obj instanceof ObjectPersistencePacket) {
+		if (packet instanceof ComplexProperty
+			&& packet.type != null
+			&& packet.type.type == ObjectPersistencePacket.class
+			&& ((ComplexProperty) packet).findProperty("ObjectID").isPresent()
+			&& ((ComplexProperty) packet).findProperty("ComponentPackets").isPresent()) {
+
 			return Optional.of(new SaveObject((ComplexProperty) packet));
 		}
 

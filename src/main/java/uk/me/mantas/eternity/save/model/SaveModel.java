@@ -29,6 +29,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * The objects of one save file, read and written through the property tree
@@ -40,31 +41,68 @@ import java.util.function.Predicate;
  * and a component its variables, so that a writer says what it wants instead
  * of walking the tree to it. The names are the ones every save measured has
  * (docs/save-format.md).
+ *
+ * <p>It is the file's own list, not a copy of it: what it adds and removes is
+ * what the file holds, and every lookup sees the file as it is now.
  */
 public final class SaveModel {
-	private final List<SaveObject> objects;
+	private final Supplier<List<Property>> packets;
 
-	private SaveModel (final List<SaveObject> objects) {
-		this.objects = Collections.unmodifiableList(objects);
+	private SaveModel (final Supplier<List<Property>> packets) {
+		this.packets = packets;
 	}
 
-	/** The objects {@code packets} holds now; one added or removed afterwards is not seen. */
+	/** The objects {@code packets} holds, whenever they are asked for. */
 	public static SaveModel of (final DeserializedPackets packets) {
-		return of(packets.getPackets());
+		return new SaveModel(packets::getPackets);
 	}
 
+	/** The objects of {@code packets}, a list the model changes in place. */
 	public static SaveModel of (final List<Property> packets) {
-		final List<SaveObject> objects = new ArrayList<>();
-		for (final Property packet : packets) {
-			SaveObject.of(packet).ifPresent(objects::add);
-		}
-
-		return new SaveModel(objects);
+		return new SaveModel(() -> packets);
 	}
 
 	/** Every game object, in the file's order. */
 	public List<SaveObject> objects () {
-		return objects;
+		final List<SaveObject> objects = new ArrayList<>();
+		for (final Property packet : packets.get()) {
+			SaveObject.of(packet).ifPresent(objects::add);
+		}
+
+		return Collections.unmodifiableList(objects);
+	}
+
+	/**
+	 * Puts an object in the file, after the ones it holds.
+	 *
+	 * @throws WriteRefusedException when the file already holds an object with
+	 *         its ID -- the game would drop both; nothing is changed
+	 */
+	public void add (final SaveObject object) throws WriteRefusedException {
+		if (object(object.id()).isPresent()) {
+			throw new WriteRefusedException("The save already holds an object with the ID "
+				+ object.id() + ", so " + object.describe() + " cannot be added. Nothing was changed.");
+		}
+
+		packets.get().add(object.property());
+	}
+
+	/**
+	 * Takes an object out of the file.
+	 *
+	 * @throws WriteRefusedException when it is not in the file; nothing is changed
+	 */
+	public void remove (final SaveObject object) throws WriteRefusedException {
+		final List<Property> list = packets.get();
+		for (int i = 0; i < list.size(); i++) {
+			if (list.get(i) == object.property()) {
+				list.remove(i);
+				return;
+			}
+		}
+
+		throw new WriteRefusedException(
+			"The save does not hold " + object.describe() + " to remove. Nothing was changed.");
 	}
 
 	/** The main character: the one {@code Player_} object a save has. */
@@ -122,7 +160,14 @@ public final class SaveModel {
 	}
 
 	private Optional<SaveObject> first (final Predicate<SaveObject> wanted) {
-		return objects.stream().filter(wanted).findFirst();
+		for (final Property packet : packets.get()) {
+			final Optional<SaveObject> object = SaveObject.of(packet);
+			if (object.isPresent() && wanted.test(object.get())) {
+				return object;
+			}
+		}
+
+		return Optional.empty();
 	}
 
 	private static boolean named (final SaveObject object, final String prefix) {
