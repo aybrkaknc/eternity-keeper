@@ -18,9 +18,8 @@
 
 package uk.me.mantas.eternity.save;
 
-import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
-import uk.me.mantas.eternity.game.ObjectPersistencePacket;
+import uk.me.mantas.eternity.save.model.SaveModel;
 import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
@@ -220,14 +219,15 @@ public final class Loadout {
 		throws IOException {
 
 		final DeserializedPackets read = worldOf(saveDirectory);
-		final List<Property> packets = read.getPackets();
-		final Property character = EKUtils.findPacketById(packets, characterId)
+		final SaveModel save = SaveModel.of(read);
+		final SaveObject character = save.object(characterId)
 			.orElseThrow(() -> new IOException("There is no such character in this save."));
 
 		final List<Property> objects = new ArrayList<>();
-		objects.add(character);
-		for (final String guid : gearOf(character)) {
-			EKUtils.findPacketById(packets, guid)
+		objects.add(character.property());
+		for (final String guid : gearOf(character.property())) {
+			save.object(guid)
+				.map(SaveObject::property)
 				.filter(item -> !objects.contains(item))
 				.ifPresent(objects::add);
 		}
@@ -287,8 +287,8 @@ public final class Loadout {
 			throw notALoadout(file);
 		}
 
-		final List<Property> packets = read.get().getPackets();
-		final Property character = packets.get(0);
+		final SaveModel packets = SaveModel.of(read.get());
+		final Property character = read.get().getPackets().get(0);
 		final Optional<SaveObject> object = SaveObject.of(character);
 		if (!object.isPresent()
 			|| !object.get().component("Equipment").isPresent()
@@ -317,8 +317,7 @@ public final class Loadout {
 		}
 
 		slots.sort((a, b) -> a.kind != b.kind ? a.kind.compareTo(b.kind) : Integer.compare(a.index, b.index));
-		final ObjectPersistencePacket mirror = (ObjectPersistencePacket) character.obj;
-		return new Loadout(file, key(mirror.ObjectID), InventoryManager.characterName(character)
+		return new Loadout(file, key(object.get().id()), InventoryManager.characterName(object.get())
 			, enumName(variable(character, "CharacterStats", "CharacterClass")), slots);
 	}
 
@@ -327,22 +326,22 @@ public final class Loadout {
 	}
 
 	private static Optional<Slot> slot (
-		final List<Property> packets, final Kind kind, final int index, final String guid
+		final SaveModel packets, final Kind kind, final int index, final String guid
 		, final String baseItem, final int stack) {
 
 		if (guid.isEmpty()) {
 			return Optional.empty();
 		}
 
-		final Optional<Property> item = EKUtils.findPacketById(packets, guid);
+		final Optional<SaveObject> item = packets.object(guid);
 		if (!item.isPresent()) {
 			return Optional.empty();
 		}
 
-		final ObjectPersistencePacket mirror = (ObjectPersistencePacket) item.get().obj;
-		final String prefab = mirror.ObjectName == null ? "" : mirror.ObjectName.replace("(Clone)", "").trim();
-		final String bound = Optional.ofNullable(variable(item.get(), "EquipmentSoulbind", "BoundGuid"))
-			.map(property -> property.obj == null ? "" : property.obj.toString())
+		final String prefab = item.get().name() == null ? "" : item.get().name().replace("(Clone)", "").trim();
+		final String bound = item.get().component("EquipmentSoulbind")
+			.flatMap(soulbind -> soulbind.get("BoundGuid"))
+			.map(String::valueOf)
 			.filter(value -> !EMPTY_GUID.equals(value))
 			.orElse("");
 
@@ -354,12 +353,13 @@ public final class Loadout {
 
 	/** What putting this on {@code characterId} would do, slot by slot. */
 	public Plan plan (final List<Property> packets, final String targetId) {
-		final Property target = EKUtils.findPacketById(packets, targetId)
+		final SaveModel save = SaveModel.of(packets);
+		final SaveObject wearer = save.object(targetId)
 			.orElseThrow(() -> new IllegalArgumentException("There is no such character in this save."));
 
-		final String id = key(((ObjectPersistencePacket) target.obj).ObjectID);
-		final boolean player = String.valueOf(((ObjectPersistencePacket) target.obj).ObjectName)
-			.toLowerCase(Locale.ROOT).startsWith("player_");
+		final Property target = wearer.property();
+		final String id = key(wearer.id());
+		final boolean player = wearer.isPlayer();
 		final String race = enumName(variable(target, "CharacterStats", "CharacterRace"));
 		final String characterClass = enumName(variable(target, "CharacterStats", "CharacterClass"));
 		final int weaponSets = 2 + intValue(variable(target, "CharacterStats", "BonusWeaponSets"));
@@ -407,7 +407,7 @@ public final class Loadout {
 			// The main character and every companion have the same ID in every
 			// playthrough, so the owner is named as this save knows them.
 			if (reason == null && !slot.boundTo.isEmpty() && !slot.boundTo.equals(id)) {
-				reason = "soulbound to " + EKUtils.findPacketById(packets, slot.boundTo)
+				reason = "soulbound to " + save.object(slot.boundTo)
 					.map(InventoryManager::characterName)
 					.orElse(slot.boundTo.equals(this.characterId) ? characterName : "someone else");
 			}
@@ -479,19 +479,15 @@ public final class Loadout {
 			return Optional.of("None of this loadout can go on that character.");
 		}
 
-		final Optional<Property> player = packets.stream()
-			.filter(p -> p.obj instanceof ObjectPersistencePacket
-				&& String.valueOf(((ObjectPersistencePacket) p.obj).ObjectName)
-					.toLowerCase(Locale.ROOT).startsWith("player_"))
-			.findFirst();
-
+		final SaveModel save = SaveModel.of(packets);
+		final Optional<SaveObject> player = save.player();
 		if (!player.isPresent()) {
 			return Optional.of("This save has no main character, so no stash to put things in.");
 		}
 
-		final String stashHolder = ((ObjectPersistencePacket) player.get().obj).ObjectID;
-		final Property wearer = EKUtils.findPacketById(packets, targetId).get();
-		final String target = ((ObjectPersistencePacket) wearer.obj).ObjectID;
+		final String stashHolder = player.get().id();
+		final Property wearer = save.object(targetId).get().property();
+		final String target = save.object(targetId).get().id();
 
 		// The items come from the file afresh each time: what goes on is a
 		// copy, and two calls must not hand the save the same objects twice.
@@ -561,11 +557,11 @@ public final class Loadout {
 
 	/**
 	 * One of the file's items as a new object: its ID rewritten wherever the
-	 * object names it, in the tree and in its mirror, and the other objects it
-	 * named forgotten (see the class comment).
+	 * object names it, and the other objects it named forgotten (see the
+	 * class comment).
 	 */
 	private static Optional<Property> copyOf (final List<Property> fromFile, final String guid, final String fresh) {
-		final Optional<Property> item = EKUtils.findPacketById(fromFile, guid);
+		final Optional<Property> item = SaveModel.of(fromFile).object(guid).map(SaveObject::property);
 		if (!item.isPresent()) {
 			return Optional.empty();
 		}
@@ -573,10 +569,6 @@ public final class Loadout {
 		final Map<String, UUID> remap = new HashMap<>();
 		remap.put(guid, UUID.fromString(fresh));
 		GuidRemap.rewrite(Collections.singletonList(item.get()), remap);
-
-		final ObjectPersistencePacket mirror = (ObjectPersistencePacket) item.get().obj;
-		mirror.ObjectID = fresh;
-		mirror.GUID = UUID.fromString(fresh);
 
 		// Equippable, Weapon, Shield and the rest each name their mod
 		// abilities, and a Summon its creatures.

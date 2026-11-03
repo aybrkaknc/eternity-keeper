@@ -21,17 +21,20 @@ package uk.me.mantas.eternity.save;
 
 import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
-import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.save.model.Component;
+import uk.me.mantas.eternity.save.model.GuidList;
+import uk.me.mantas.eternity.save.model.ItemContainer;
+import uk.me.mantas.eternity.save.model.SaveModel;
 import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
-import uk.me.mantas.eternity.serializer.TypePair;
-import uk.me.mantas.eternity.serializer.properties.*;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
+import uk.me.mantas.eternity.serializer.properties.Property;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -115,7 +118,6 @@ public class InventoryManager {
 	/** The equipment component's fixed slot array, addressed by index. */
 	public static final String EQUIPMENT = "Equipment";
 	private static final int EQUIPMENT_SLOTS = 11;
-	private static final String EMPTY_GUID = "00000000-0000-0000-0000-000000000000";
 
 	/** One item's desired final state, relative to where it is now. */
 	public static final class Change {
@@ -266,11 +268,10 @@ public class InventoryManager {
 		}
 
 		final DeserializedPackets deserialized = deserializedOpt.get();
-		final List<Property> packets = new ArrayList<>(deserialized.getPackets());
+		final SaveModel save = SaveModel.of(deserialized);
 
-		boolean packetsChanged = false;
 		for (final Change change : changes) {
-			final Optional<Property> owner = EKUtils.findPacketById(packets, change.character);
+			final Optional<SaveObject> owner = save.object(change.character);
 			if (!owner.isPresent()) {
 				logger.error("No character '%s' in target save.%n", change.character);
 				return false;
@@ -278,47 +279,41 @@ public class InventoryManager {
 
 			// An item brought in whole, enchantments and all: a loadout's.
 			if (change.carried != null) {
-				if (!addCarriedItem(packets, owner.get(), change)) {
+				if (!addCarriedItem(save, owner.get(), change)) {
 					return false;
 				}
 
-				packetsChanged = true;
 				continue;
 			}
 
 			// Adding an item that isn't in the save yet: it needs its own
-			// top-level packet before anything can reference it.
+			// top-level object before anything can reference it.
 			if (change.newItemPrefab != null) {
-				if (!addNewItem(packets, owner.get(), change)) {
+				if (!addNewItem(save, owner.get(), change)) {
 					return false;
 				}
 
-				packetsChanged = true;
 				continue;
 			}
 
 			// Worn gear lives in a fixed slot array rather than an item list,
 			// so equipping and unequipping are their own operations.
 			if (change.toEquipmentSlot >= 0 || change.fromEquipmentSlot >= 0) {
-				if (!applyEquipmentChange(packets, owner.get(), change)) {
+				if (!applyEquipmentChange(save, owner.get(), change)) {
 					return false;
 				}
 
 				continue;
 			}
 
-			final Optional<CollectionProperty> itemList =
-				findList(owner.get(), change.component, "ItemList");
-			final Optional<CollectionProperty> serializedList =
-				findList(owner.get(), change.component, "SerializedItemList");
-
-			if (!itemList.isPresent() || !serializedList.isPresent()) {
+			final Optional<ItemContainer> container = container(owner.get(), change.component);
+			if (!container.isPresent()) {
 				logger.error(
 					"Component '%s' has no ItemList/SerializedItemList.%n", change.component);
 				return false;
 			}
 
-			final int index = indexOfGuid(serializedList.get(), change.itemGuid);
+			final int index = container.get().indexOf(change.itemGuid);
 			if (index < 0) {
 				logger.error(
 					"Item '%s' not found in '%s'.%n", change.itemGuid, change.component);
@@ -326,56 +321,39 @@ public class InventoryManager {
 			}
 
 			if (change.stackSize <= 0) {
-				itemList.get().items.remove(index);
-				serializedList.get().items.remove(index);
-
-				final boolean removed =
-					packets.removeIf(p -> p.obj instanceof ObjectPersistencePacket
-						&& change.itemGuid.equalsIgnoreCase(
-							((ObjectPersistencePacket) p.obj).ObjectID));
-
-				if (!removed) {
+				if (!save.object(change.itemGuid).isPresent()) {
 					logger.error(
 						"Item '%s' had no standalone packet to remove.%n", change.itemGuid);
 					return false;
 				}
 
-				packetsChanged = true;
+				container.get().remove(index);
+				save.removeUnlisted(Collections.singleton(change.itemGuid));
 				continue;
 			}
 
 			if (!change.isMove()) {
-				final Property item = itemList.get().items.get(index);
-				if (!setStackSize(item, change.stackSize)) {
-					return false;
-				}
+				final ItemContainer.Entry item = container.get().entry(index);
+				item.setStackSize(change.stackSize);
 
 				touch(change.character, change.component, change.itemGuid);
 				request(change.character, change.component, change.itemGuid, change.destSlot);
 
-				if (change.destSlot >= 0
-					&& !setSlot(item, freeSlot(itemList.get(), change.destSlot, index))) {
-
-					return false;
+				if (change.destSlot >= 0) {
+					item.setSlot(container.get().freeSlot(change.destSlot, index));
 				}
 
 				continue;
 			}
 
-			final Optional<Property> destOwner = EKUtils.findPacketById(packets, change.destCharacter);
+			final Optional<SaveObject> destOwner = save.object(change.destCharacter);
 			if (!destOwner.isPresent()) {
 				logger.error("No destination character '%s'.%n", change.destCharacter);
 				return false;
 			}
 
-			final Optional<CollectionProperty> destItemList =
-				findList(destOwner.get(), change.destComponent, "ItemList");
-			final Optional<CollectionProperty> destSerializedList =
-				findList(destOwner.get(), change.destComponent, "SerializedItemList");
-
-			if (!destItemList.isPresent() || !destSerializedList.isPresent()
-				|| !findMaxItems(destOwner.get(), change.destComponent).isPresent()) {
-
+			final Optional<ItemContainer> destination = container(destOwner.get(), change.destComponent);
+			if (!destination.isPresent() || !destination.get().maxItems().isPresent()) {
 				logger.error("Destination component '%s' not found.%n", change.destComponent);
 				return false;
 			}
@@ -385,37 +363,20 @@ public class InventoryManager {
 			touch(change.destCharacter, change.destComponent, change.itemGuid);
 			request(change.destCharacter, change.destComponent, change.itemGuid, change.destSlot);
 
-			final Property item = itemList.get().items.remove(index);
-			final Property guid = serializedList.get().items.remove(index);
-			destItemList.get().items.add(item);
-			destSerializedList.get().items.add(guid);
-
-			if (!setStackSize(item, change.stackSize)
-				|| !setSlot(item, freeSlot(destItemList.get(), change.destSlot, -1))) {
-
-				return false;
-			}
-
-			// An item's own packet is parented to whoever carries it, so
-			// handing it to another character has to re-point that link.
-			if (!change.character.equalsIgnoreCase(change.destCharacter)
-				&& !reparent(packets, change.itemGuid, destOwner.get())) {
-
-				return false;
-			}
+			// An item's own object is parented to whoever carries it, so
+			// handing it to another character re-points that link.
+			final ItemContainer.Entry item = container.get().moveTo(destination.get(), index, save);
+			item.setStackSize(change.stackSize);
+			item.setSlot(destination.get().freeSlot(change.destSlot, -1));
 		}
 
-		settleSlots(packets);
+		settleSlots(save);
 
-		final Optional<String> refusal = refusal(packets);
+		final Optional<String> refusal = refusal(save);
 		if (refusal.isPresent()) {
 			problem = refusal.get();
 			logger.error("Refused: %s%n", problem);
 			return false;
-		}
-
-		if (packetsChanged) {
-			deserialized.setPackets(packets);
 		}
 
 		deserialized.replace(mobileObjects);
@@ -446,49 +407,40 @@ public class InventoryManager {
 	 * said it would be, and anything still beyond the container's last tile
 	 * comes back inside it.
 	 */
-	private void settleSlots (final List<Property> packets) {
+	private void settleSlots (final SaveModel save) throws WriteRefusedException {
 		for (final Requested want : requested) {
-			final Optional<Property> owner = EKUtils.findPacketById(packets, want.character);
-			if (!owner.isPresent()) {
-				continue;
-			}
+			final Optional<ItemContainer> container =
+				save.object(want.character).flatMap(owner -> container(owner, want.component));
 
-			final Optional<CollectionProperty> items = findList(owner.get(), want.component, "ItemList");
-			final Optional<CollectionProperty> guids =
-				findList(owner.get(), want.component, "SerializedItemList");
-
-			if (!items.isPresent() || !guids.isPresent()) {
+			if (!container.isPresent()) {
 				continue;
 			}
 
 			// Moved on again later in the same batch: that move settles it.
-			final int index = indexOfGuid(guids.get(), want.item);
+			final int index = container.get().indexOf(want.item);
 			if (index < 0) {
 				continue;
 			}
 
-			if (freeSlot(items.get(), want.slot, index) == want.slot) {
-				setSlot(items.get().items.get(index), want.slot);
+			if (container.get().freeSlot(want.slot, index) == want.slot) {
+				container.get().entry(index).setSlot(want.slot);
 			}
 		}
 
 		for (final String key : touchedContainers) {
 			final String[] parts = key.split("\\|", 2);
-			final Optional<Property> owner = EKUtils.findPacketById(packets, parts[0]);
-			if (!owner.isPresent()) {
+			final Optional<ItemContainer> container =
+				save.object(parts[0]).flatMap(owner -> container(owner, parts[1]));
+
+			if (!container.isPresent() || !container.get().maxItems().isPresent()) {
 				continue;
 			}
 
-			final Optional<CollectionProperty> items = findList(owner.get(), parts[1], "ItemList");
-			final Optional<Integer> maxItems = findMaxItems(owner.get(), parts[1]);
-			if (!items.isPresent() || !maxItems.isPresent()) {
-				continue;
-			}
-
-			for (int i = 0; i < items.get().items.size(); i++) {
-				final Property item = items.get().items.get(i);
-				if (slotOf(item).orElse(0) >= maxItems.get()) {
-					setSlot(item, freeSlot(items.get(), -1, i));
+			final int maxItems = container.get().maxItems().get();
+			for (int i = 0; i < container.get().size(); i++) {
+				final ItemContainer.Entry item = container.get().entry(i);
+				if (item.slot().orElse(0) >= maxItems) {
+					item.setSlot(container.get().freeSlot(-1, i));
 				}
 			}
 		}
@@ -526,30 +478,25 @@ public class InventoryManager {
 	 * those checks are skipped rather than guessed. Capacity, weapon sets and
 	 * soulbinding are all in the save.
 	 */
-	private Optional<String> refusal (final List<Property> packets) {
-		final ItemCatalog catalog = ItemCatalog.getInstance();
-
+	private Optional<String> refusal (final SaveModel save) {
 		for (final String key : touchedContainers) {
 			final String[] parts = key.split("\\|", 2);
-			final Optional<Property> owner = EKUtils.findPacketById(packets, parts[0]);
+			final Optional<SaveObject> owner = save.object(parts[0]);
 			if (!owner.isPresent()) {
 				continue;
 			}
 
-			final Optional<CollectionProperty> items = findList(owner.get(), parts[1], "ItemList");
-			final Optional<CollectionProperty> guids =
-				findList(owner.get(), parts[1], "SerializedItemList");
-			final Optional<Integer> maxItems = findMaxItems(owner.get(), parts[1]);
-
-			if (!items.isPresent() || !guids.isPresent()) {
+			final Optional<ItemContainer> container = container(owner.get(), parts[1]);
+			if (!container.isPresent()) {
 				continue;
 			}
 
-			if (maxItems.isPresent() && items.get().items.size() > maxItems.get()) {
+			final Optional<Integer> maxItems = container.get().maxItems();
+			if (maxItems.isPresent() && container.get().size() > maxItems.get()) {
 				return Optional.of(String.format(
 					"%s would hold %d items, but there is room for %d."
 					, containerName(owner.get(), parts[1])
-					, items.get().items.size(), maxItems.get()));
+					, container.get().size(), maxItems.get()));
 			}
 
 			if (INFINITE_STACKING.contains(parts[1])) {
@@ -557,47 +504,45 @@ public class InventoryManager {
 			}
 
 			for (final String item : touchedItems.getOrDefault(key, new HashSet<>())) {
-				final int index = indexOfGuid(guids.get(), item);
-				if (index < 0 || index >= items.get().items.size()) {
+				final int index = container.get().indexOf(item);
+				if (index < 0 || index >= container.get().size()) {
 					continue;
 				}
 
-				final int stack = stackSizeOf(items.get().items.get(index));
-				final Optional<ItemCatalog.Entry> entry = catalogEntryOf(packets, item);
+				final int stack = container.get().entry(index).stackSize();
+				final Optional<ItemCatalog.Entry> entry = catalogEntryOf(save, item);
 				if (entry.isPresent() && stack > entry.get().maxStack) {
 					return Optional.of(String.format(
 						"%s stacks to %d, so a stack of %d only fits in the stash."
-						, itemName(packets, item), entry.get().maxStack, stack));
+						, itemName(save, item), entry.get().maxStack, stack));
 				}
 			}
 		}
 
 		for (final Placed put : placed) {
-			final Optional<Property> wearer = EKUtils.findPacketById(packets, put.wearer);
+			final Optional<SaveObject> wearer = save.object(put.wearer);
 			if (!wearer.isPresent()) {
 				continue;
 			}
 
-			final List<Property> slots = (put.weaponSet
-				? findEquipmentList(wearer.get(), "WeaponSetsSerialized")
-				: findEquipmentSlots(wearer.get()))
-				.map(list -> list.items)
-				.orElse(new ArrayList<>());
+			final Optional<GuidList> slots = equipment(wearer.get(), put.weaponSet);
 
 			// Something later in the same batch may have taken it out again.
-			if (put.index >= slots.size() || !put.item.equalsIgnoreCase(guidOf(slots.get(put.index)))) {
+			if (!slots.isPresent() || put.index >= slots.get().size()
+				|| !put.item.equalsIgnoreCase(slots.get().get(put.index))) {
+
 				continue;
 			}
 
-			final String name = itemName(packets, put.item);
-			final Optional<String> bound = boundTo(packets, put.item);
+			final String name = itemName(save, put.item);
+			final Optional<String> bound = boundTo(save, put.item);
 			if (bound.isPresent() && !bound.get().equalsIgnoreCase(put.wearer)) {
 				return Optional.of(String.format("%s is soulbound to %s."
-					, name, EKUtils.findPacketById(packets, bound.get())
+					, name, save.object(bound.get())
 						.map(InventoryManager::characterName).orElse("someone else")));
 			}
 
-			final Optional<ItemCatalog.Entry> entry = catalogEntryOf(packets, put.item);
+			final Optional<ItemCatalog.Entry> entry = catalogEntryOf(save, put.item);
 
 			if (!put.weaponSet) {
 				final String flag = put.index < EQUIPMENT_SLOT_FLAGS.length
@@ -634,12 +579,12 @@ public class InventoryManager {
 			}
 
 			final int partnerIndex = put.index ^ 1;
-			final String partner = partnerIndex < slots.size() ? guidOf(slots.get(partnerIndex)) : "";
+			final String partner = partnerIndex < slots.get().size() ? slots.get().get(partnerIndex) : "";
 			if (!partner.isEmpty()) {
 				final Optional<String> twoHander = isTwoHanded(entry)
 					? Optional.of(name)
-					: (isTwoHanded(catalogEntryOf(packets, partner))
-						? Optional.of(itemName(packets, partner)) : Optional.empty());
+					: (isTwoHanded(catalogEntryOf(save, partner))
+						? Optional.of(itemName(save, partner)) : Optional.empty());
 
 				if (twoHander.isPresent()) {
 					return Optional.of(
@@ -662,60 +607,45 @@ public class InventoryManager {
 		return entry.isPresent() && entry.get().slots.contains("BothPrimaryAndSecondarySlot");
 	}
 
-	private static Optional<ObjectPersistencePacket> itemPacket (
-		final List<Property> packets, final String item) {
-
-		return EKUtils.findPacketById(packets, item)
-			.filter(p -> p.obj instanceof ObjectPersistencePacket)
-			.map(p -> (ObjectPersistencePacket) p.obj);
-	}
-
-	private static String prefabName (final List<Property> packets, final String item) {
-		return itemPacket(packets, item)
-			.map(p -> p.ObjectName == null ? "" : p.ObjectName.replace("(Clone)", "").trim())
+	private static String prefabName (final SaveModel save, final String item) {
+		return save.object(item)
+			.map(object -> object.name() == null ? "" : object.name().replace("(Clone)", "").trim())
 			.orElse("");
 	}
 
-	private static Optional<ItemCatalog.Entry> catalogEntryOf (
-		final List<Property> packets, final String item) {
-
-		final String prefab = prefabName(packets, item);
+	private static Optional<ItemCatalog.Entry> catalogEntryOf (final SaveModel save, final String item) {
+		final String prefab = prefabName(save, item);
 		return prefab.isEmpty() ? Optional.empty() : ItemCatalog.getInstance().lookup(prefab);
 	}
 
-	private static String itemName (final List<Property> packets, final String item) {
-		final Optional<ItemCatalog.Entry> entry = catalogEntryOf(packets, item);
+	private static String itemName (final SaveModel save, final String item) {
+		final Optional<ItemCatalog.Entry> entry = catalogEntryOf(save, item);
 		if (entry.isPresent() && !entry.get().name.isEmpty()) {
 			return entry.get().name;
 		}
 
-		final String prefab = prefabName(packets, item);
+		final String prefab = prefabName(save, item);
 		return prefab.isEmpty() ? "That item" : prefab.replace('_', ' ');
 	}
 
 	/**
 	 * Who an item is soulbound to: {@code EquipmentSoulbind.BoundGuid} on the
-	 * item's own packet, which is the owner's ObjectID. Empty for an item that
+	 * item's own object, which is the owner's ObjectID. Empty for an item that
 	 * is not soulbound, or not yet.
 	 */
-	private static Optional<String> boundTo (final List<Property> packets, final String item) {
-		return EKUtils.findPacketById(packets, item)
-			.flatMap(SaveObject::of)
+	private static Optional<String> boundTo (final SaveModel save, final String item) {
+		return save.object(item)
 			.flatMap(o -> o.component("EquipmentSoulbind"))
-			.flatMap(c -> c.variable("BoundGuid"))
-			.map(p -> p.obj == null ? "" : p.obj.toString())
-			.filter(guid -> !guid.isEmpty() && !EMPTY_GUID.equals(guid));
+			.flatMap(c -> c.get("BoundGuid"))
+			.map(String::valueOf)
+			.filter(guid -> !guid.isEmpty() && !GuidList.EMPTY.equals(guid));
 	}
 
-	private static int intStat (final Property character, final String stat) {
-		return statsOf(character)
-			.flatMap(c -> c.variable(stat))
-			.map(p -> p.obj instanceof Integer ? (Integer) p.obj : 0)
+	private static int intStat (final SaveObject character, final String stat) {
+		return character.component("CharacterStats")
+			.flatMap(c -> c.get(stat))
+			.map(value -> value instanceof Integer ? (Integer) value : 0)
 			.orElse(0);
-	}
-
-	private static Optional<Component> statsOf (final Property character) {
-		return SaveObject.of(character).flatMap(o -> o.component("CharacterStats"));
 	}
 
 	/**
@@ -724,16 +654,20 @@ public class InventoryManager {
 	 * registry's, then the one inside the object name.
 	 */
 	static String characterName (final Property character) {
-		final Optional<String> override = statsOf(character)
-			.flatMap(c -> c.variable("OverrideName"))
-			.map(p -> p.obj == null ? "" : p.obj.toString().trim())
+		return SaveObject.of(character).map(InventoryManager::characterName).orElse("That character");
+	}
+
+	static String characterName (final SaveObject character) {
+		final Optional<String> override = character.component("CharacterStats")
+			.flatMap(c -> c.get("OverrideName"))
+			.map(value -> value == null ? "" : value.toString().trim())
 			.filter(name -> !name.isEmpty());
 
 		if (override.isPresent()) {
 			return override.get();
 		}
 
-		final String objectName = ((ObjectPersistencePacket) character.obj).ObjectName;
+		final String objectName = character.name();
 		final Optional<String> companionName = CompanionRegistry.displayNameFor(objectName, "");
 		if (companionName.isPresent()) {
 			return companionName.get();
@@ -743,7 +677,7 @@ public class InventoryManager {
 		return inside.isEmpty() ? "That character" : inside.replace('_', ' ');
 	}
 
-	private static String containerName (final Property owner, final String component) {
+	private static String containerName (final SaveObject owner, final String component) {
 		final String who = characterName(owner);
 		switch (component) {
 			case "StashInventory":    return "The stash";
@@ -754,16 +688,6 @@ public class InventoryManager {
 		}
 	}
 
-	private static int stackSizeOf (final Property itemProperty) {
-		if (!(itemProperty instanceof ComplexProperty)) {
-			return 1;
-		}
-
-		return findExact((ComplexProperty) itemProperty, "stackSize")
-			.map(p -> p.obj instanceof Integer ? (Integer) p.obj : 1)
-			.orElse(1);
-	}
-
 	/**
 	 * Equipping, unequipping, and the swap that happens when you drop an item
 	 * onto an occupied slot.
@@ -771,12 +695,13 @@ public class InventoryManager {
 	 * <p>Worn gear is referenced only by UUID from the wearer's fixed 11-entry
 	 * {@code EquipmentSetSerialized} array, so putting something on is really
 	 * "unlink it from its pack and write its GUID into slot N" — the item's own
-	 * top-level packet never moves, it just gets re-parented if it changed
+	 * top-level object never moves, it just gets re-parented if it changed
 	 * hands. Taking something off is the awkward direction: the pack has no
 	 * entry for it, so one has to be manufactured.
 	 */
 	private boolean applyEquipmentChange (
-		final List<Property> packets, final Property owner, final Change change) {
+		final SaveModel save, final SaveObject owner, final Change change)
+		throws WriteRefusedException {
 
 		final int slotIndex = change.toEquipmentSlot >= 0
 			? change.toEquipmentSlot : change.fromEquipmentSlot;
@@ -788,23 +713,20 @@ public class InventoryManager {
 
 		final boolean equipping = change.toEquipmentSlot >= 0;
 		final String wearerID = equipping ? change.destCharacter : change.character;
-		final Optional<Property> wearer = EKUtils.findPacketById(packets, wearerID);
+		final Optional<SaveObject> wearer = save.object(wearerID);
 
 		if (!wearer.isPresent()) {
 			logger.error("No character '%s' to wear the item.%n", wearerID);
 			return false;
 		}
 
-		final Optional<CollectionProperty> equipment = change.weaponSet
-			? findEquipmentList(wearer.get(), "WeaponSetsSerialized")
-			: findEquipmentSlots(wearer.get());
-
+		final Optional<GuidList> equipment = equipment(wearer.get(), change.weaponSet);
 		if (!equipment.isPresent()) {
 			logger.error("Character '%s' has no Equipment component.%n", wearerID);
 			return false;
 		}
 
-		final List<Property> slots = equipment.get().items;
+		final GuidList slots = equipment.get();
 		if (slotIndex >= slots.size()) {
 			logger.error(
 				"Equipment only has %d slots; %d requested.%n", slots.size(), slotIndex);
@@ -815,24 +737,20 @@ public class InventoryManager {
 		// The pack the item comes from (equip) or goes to (unequip).
 		final String packCharacter = equipping ? change.character : change.destCharacter;
 		final String packComponent = equipping ? change.component : change.destComponent;
-		final Optional<Property> packOwner = EKUtils.findPacketById(packets, packCharacter);
+		final Optional<SaveObject> packOwner = save.object(packCharacter);
 
 		if (!packOwner.isPresent()) {
 			logger.error("No character '%s' for the pack side.%n", packCharacter);
 			return false;
 		}
 
-		final Optional<CollectionProperty> itemList =
-			findList(packOwner.get(), packComponent, "ItemList");
-		final Optional<CollectionProperty> serializedList =
-			findList(packOwner.get(), packComponent, "SerializedItemList");
-
-		if (!itemList.isPresent() || !serializedList.isPresent()) {
+		final Optional<ItemContainer> pack = container(packOwner.get(), packComponent);
+		if (!pack.isPresent()) {
 			logger.error("Component '%s' has no item lists.%n", packComponent);
 			return false;
 		}
 
-		final String occupant = guidOf(slots.get(slotIndex));
+		final String occupant = slots.get(slotIndex);
 
 		if (!equipping) {
 			if (!change.itemGuid.equalsIgnoreCase(occupant)) {
@@ -847,23 +765,21 @@ public class InventoryManager {
 			touch(packCharacter, packComponent, change.itemGuid);
 			request(packCharacter, packComponent, change.itemGuid, change.destSlot);
 
-			final Optional<Property> entry = buildInventoryEntry(
-				packets, change.itemGuid, freeSlot(itemList.get(), change.destSlot, -1));
-
-			if (!entry.isPresent()) {
+			final Optional<String> baseItem = prefabPathOf(save, change.itemGuid);
+			if (!baseItem.isPresent()) {
 				return false;
 			}
 
-			itemList.get().items.add(entry.get());
-			addGuid(serializedList.get(), change.itemGuid);
-			setGuid(slots.get(slotIndex), EMPTY_GUID);
+			pack.get().add(ItemContainer.newEntry(
+				save, baseItem.get(), pack.get().freeSlot(change.destSlot, -1), 1), change.itemGuid);
+			slots.set(slotIndex, GuidList.EMPTY);
 
 			return change.character.equalsIgnoreCase(change.destCharacter)
-				|| reparent(packets, change.itemGuid, packOwner.get());
+				|| reparent(save, change.itemGuid, packOwner.get());
 		}
 
 		// Equipping: unlink from the pack, then hand the slot over.
-		final int index = indexOfGuid(serializedList.get(), change.itemGuid);
+		final int index = pack.get().indexOf(change.itemGuid);
 		if (index < 0) {
 			logger.error(
 				"Item '%s' not found in '%s'.%n", change.itemGuid, packComponent);
@@ -871,93 +787,77 @@ public class InventoryManager {
 			return false;
 		}
 
-		final Property displacedEntry = itemList.get().items.remove(index);
-		serializedList.get().items.remove(index);
-		setGuid(slots.get(slotIndex), change.itemGuid);
+		final ItemContainer.Entry displacedEntry = pack.get().remove(index);
+		slots.set(slotIndex, change.itemGuid);
 		placed.add(new Placed(wearerID, change.weaponSet, slotIndex, change.itemGuid));
 
 		// Whatever was already worn falls back into the pack. Reusing the
 		// entry we just freed keeps this allocation-free and type-exact.
 		if (!occupant.isEmpty() && !occupant.equalsIgnoreCase(change.itemGuid)) {
-			final Optional<String> baseItem = prefabPathOf(packets, occupant);
+			final Optional<String> baseItem = prefabPathOf(save, occupant);
 			if (!baseItem.isPresent()) {
 				return false;
 			}
 
-			if (!setBaseItem(displacedEntry, baseItem.get())
-				|| !setStackSize(displacedEntry, 1)
-				|| !setSlot(displacedEntry, freeSlot(itemList.get(), -1, -1))) {
-
-				return false;
-			}
-
-			itemList.get().items.add(displacedEntry);
-			addGuid(serializedList.get(), occupant);
+			displacedEntry.setBaseItem(baseItem.get());
+			displacedEntry.setStackSize(1);
+			displacedEntry.setSlot(pack.get().freeSlot(-1, -1));
+			pack.get().add(displacedEntry, occupant);
 			touch(packCharacter, packComponent, occupant);
 
-			if (!reparent(packets, occupant, packOwner.get())) {
+			if (!reparent(save, occupant, packOwner.get())) {
 				return false;
 			}
 		}
 
 		return change.character.equalsIgnoreCase(wearerID)
-			|| reparent(packets, change.itemGuid, wearer.get());
+			|| reparent(save, change.itemGuid, wearer.get());
 	}
 
 	/**
 	 * Creates an item that isn't in the save at all yet.
 	 *
-	 * <p>Three things have to appear together: a top-level
-	 * {@code ObjectPersistencePacket} carrying a fresh GUID and the prefab to
-	 * instantiate, an {@code ItemList} entry, and the matching UUID in
-	 * {@code SerializedItemList} (which the game reads as a GUIDLink and
-	 * resolves against the persistence manager — hence the packet). The packet
-	 * is deliberately minimal: {@code CreateObject} loads the prefab from
-	 * {@code PrefabResource}, so anything not overridden here comes back as the
-	 * prefab's own defaults, which is exactly right for a brand new item.
+	 * <p>Three things have to appear together: a top-level object carrying a
+	 * fresh GUID and the prefab to instantiate, an {@code ItemList} entry, and
+	 * the matching UUID in {@code SerializedItemList} (which the game reads as
+	 * a GUIDLink and resolves against the persistence manager — hence the
+	 * object). The object is deliberately minimal: {@code CreateObject} loads
+	 * the prefab from {@code PrefabResource}, so anything not overridden here
+	 * comes back as the prefab's own defaults, which is exactly right for a
+	 * brand new item. It carries only InstanceID and Persistence: the prefab
+	 * brings its Equippable, Weapon or Consumable components back with default
+	 * state, which is what a newly created item should have.
 	 */
 	private boolean addNewItem (
-		final List<Property> packets, final Property owner, final Change change) {
+		final SaveModel save, final SaveObject owner, final Change change)
+		throws WriteRefusedException {
 
-		final Optional<CollectionProperty> itemList =
-			findList(owner, change.destComponent, "ItemList");
-		final Optional<CollectionProperty> serializedList =
-			findList(owner, change.destComponent, "SerializedItemList");
-
-		if (!itemList.isPresent() || !serializedList.isPresent()) {
+		final Optional<ItemContainer> container = container(owner, change.destComponent);
+		if (!container.isPresent()) {
 			logger.error("Component '%s' has no item lists.%n", change.destComponent);
 			return false;
 		}
 
-		final String ownerID = ((ObjectPersistencePacket) owner.obj).ObjectID;
-		touch(ownerID, change.destComponent, change.itemGuid);
-		request(ownerID, change.destComponent, change.itemGuid, change.destSlot);
+		touch(owner.id(), change.destComponent, change.itemGuid);
+		request(owner.id(), change.destComponent, change.itemGuid, change.destSlot);
 
-		final Optional<Property> template = findAnyItemPacket(packets);
+		final Optional<SaveObject> template = findAnyItem(save);
 		if (!template.isPresent()) {
 			logger.error("This save has no item packet to model a new one on.%n");
 			return false;
 		}
 
 		final String guid = change.itemGuid;
-		final String ownerName = ((ObjectPersistencePacket) owner.obj).ObjectName;
-		final Optional<Property> packet = buildItemPacket(
-			template.get(), guid, change.newItemPrefab, change.newItemPath, ownerName);
+		final ItemContainer.Entry entry = ItemContainer.newEntry(save, change.newItemPath
+			, container.get().freeSlot(change.destSlot, -1), change.stackSize);
 
-		if (!packet.isPresent()) {
-			return false;
-		}
+		save.mint(template.get()
+			, new SaveModel.Identity(change.newItemPrefab + "(Clone)", guid, UUID.fromString(guid)
+				, change.newItemPath, owner.name(), null)
+			, (type, component) -> "InstanceID".equals(type) || "Persistence".equals(type)
+			, (type, copy) -> {});
 
-		final Optional<ComplexProperty> entry = newEntry(packets, change.newItemPath
-			, freeSlot(itemList.get(), change.destSlot, -1), change.stackSize);
-		if (!entry.isPresent()) {
-			return false;
-		}
-
-		itemList.get().items.add(entry.get());
-		addGuid(serializedList.get(), guid);
-		packets.add(packet.get());
-
+		container.get().add(entry, guid);
 		return true;
 	}
 
@@ -965,489 +865,103 @@ public class InventoryManager {
 	 * Brings in an item whole -- a loadout's copy, with its enchantments, its
 	 * soulbinding and a grimoire's spells -- rather than a bare prefab. It
 	 * goes into the holder's container like any new item, and takes the
-	 * holder's area and name as its parent, in the tree and in its mirror,
-	 * since the rest of this class finds objects through the mirror.
+	 * holder's area and name as its parent.
 	 */
 	private boolean addCarriedItem (
-		final List<Property> packets, final Property owner, final Change change) {
+		final SaveModel save, final SaveObject owner, final Change change)
+		throws WriteRefusedException {
 
-		final Optional<CollectionProperty> itemList =
-			findList(owner, change.destComponent, "ItemList");
-		final Optional<CollectionProperty> serializedList =
-			findList(owner, change.destComponent, "SerializedItemList");
+		final Optional<ItemContainer> container = container(owner, change.destComponent);
+		final Optional<SaveObject> item = SaveObject.of(change.carried);
 
-		if (!itemList.isPresent() || !serializedList.isPresent()
-			|| !(change.carried instanceof ComplexProperty)
-			|| !(change.carried.obj instanceof ObjectPersistencePacket)) {
-
+		if (!container.isPresent() || !item.isPresent()) {
 			logger.error("No room in '%s' for an item brought in whole.%n", change.destComponent);
 			return false;
 		}
 
-		final ObjectPersistencePacket holder = (ObjectPersistencePacket) owner.obj;
-		final ObjectPersistencePacket mirror = (ObjectPersistencePacket) change.carried.obj;
-		if (!change.itemGuid.equalsIgnoreCase(mirror.ObjectID)) {
-			logger.error("An item brought in as '%s' is '%s'.%n", change.itemGuid, mirror.ObjectID);
+		if (!change.itemGuid.equalsIgnoreCase(item.get().id())) {
+			logger.error("An item brought in as '%s' is '%s'.%n", change.itemGuid, item.get().id());
 			return false;
 		}
 
-		final ComplexProperty packet = (ComplexProperty) change.carried;
-		final Optional<Property> parent = packet.findProperty("Parent");
-		final Optional<Property> level = packet.findProperty("LevelName");
-		if (!parent.isPresent() || !level.isPresent()
-			|| !Property.update(parent.get(), holder.ObjectName)
-			|| !Property.update(level.get(), holder.LevelName)) {
+		item.get().set("Parent", owner.name());
+		item.get().set("LevelName", owner.levelName());
 
-			logger.error("An item brought in whole has no Parent or LevelName to set.%n");
-			return false;
-		}
-
-		mirror.Parent = holder.ObjectName;
-		mirror.LevelName = holder.LevelName;
-
-		touch(holder.ObjectID, change.destComponent, change.itemGuid);
-		request(holder.ObjectID, change.destComponent, change.itemGuid, change.destSlot);
-		packets.add(packet);
+		touch(owner.id(), change.destComponent, change.itemGuid);
+		request(owner.id(), change.destComponent, change.itemGuid, change.destSlot);
+		save.add(item.get());
 
 		final Optional<String> baseItem = change.newItemPath != null
-			? Optional.of(change.newItemPath) : prefabPathOf(packets, change.itemGuid);
-		final Optional<ComplexProperty> entry = baseItem.isPresent()
-			? newEntry(packets, baseItem.get(), freeSlot(itemList.get(), change.destSlot, -1), change.stackSize)
-			: Optional.empty();
+			? Optional.of(change.newItemPath) : prefabPathOf(save, change.itemGuid);
 
-		if (!entry.isPresent()) {
+		if (!baseItem.isPresent()) {
 			return false;
 		}
 
-		itemList.get().items.add(entry.get());
-		addGuid(serializedList.get(), change.itemGuid);
+		container.get().add(ItemContainer.newEntry(save, baseItem.get()
+			, container.get().freeSlot(change.destSlot, -1), change.stackSize), change.itemGuid);
 		return true;
 	}
 
-	/**
-	 * A fresh {@code InventoryItem} entry, its type strings copied from one
-	 * this save already holds, so it is written exactly as the game would.
-	 */
-	private static Optional<ComplexProperty> newEntry (
-		final List<Property> packets, final String baseItem, final int uiSlot, final int stackSize) {
-
-		final Optional<ComplexProperty> template = findAnyInventoryEntry(packets);
-		if (!template.isPresent()) {
-			logger.error("This save has no InventoryItem to model a new entry on.%n");
-			return Optional.empty();
-		}
-
-		final ComplexProperty entry = new ComplexProperty(null, template.get().type);
-		for (final Property field : template.get().properties) {
-			if (!(field instanceof SimpleProperty) || field.name == null) {
-				continue;
-			}
-
-			final Object value;
-			switch (field.name) {
-				case "BaseItem":        value = baseItem; break;
-				case "uiSlot":          value = uiSlot; break;
-				case "StackSize":       value = Math.max(1, stackSize); break;
-				case "stackSize":       value = Math.max(1, stackSize); break;
-				case "Original":        value = false; break;
-				case "AreaLootSource":  value = false; break;
-				default:                value = ((SimpleProperty) field).value; break;
-			}
-
-			final SimpleProperty copy = new SimpleProperty(field.name, field.type);
-			copy.value = value;
-			copy.obj = value;
-			entry.properties.add(copy);
-		}
-
-		return Optional.of(entry);
+	/** Any item object the game wrote, used purely for its shape. */
+	private static Optional<SaveObject> findAnyItem (final SaveModel save) {
+		return save.objects().stream()
+			.filter(object -> object.get("PrefabResource")
+				.map(prefab -> String.valueOf(prefab).toLowerCase().contains("/items/"))
+				.orElse(false))
+			.filter(object -> !object.components().isEmpty())
+			.findFirst();
 	}
 
-	/** Any existing item packet, used purely for its type information. */
-	private static Optional<Property> findAnyItemPacket (final List<Property> packets) {
-		for (final Property packet : packets) {
-			if (!(packet.obj instanceof ObjectPersistencePacket)) {
-				continue;
-			}
+	private static Optional<ItemContainer> container (final SaveObject owner, final String component) {
+		return owner.component(component).flatMap(Component::itemContainer);
+	}
 
-			final ObjectPersistencePacket item = (ObjectPersistencePacket) packet.obj;
-			if (item.PrefabResource != null
-				&& item.PrefabResource.toLowerCase().contains("/items/")
-				&& item.ComponentPackets != null) {
-
-				return Optional.of(packet);
-			}
-		}
-
-		return Optional.empty();
+	/** The worn equipment's slots, or the weapon sets'. */
+	private static Optional<GuidList> equipment (final SaveObject wearer, final boolean weaponSet) {
+		return wearer.component(EQUIPMENT)
+			.flatMap(c -> c.guidList(weaponSet ? "WeaponSetsSerialized" : "EquipmentSetSerialized"));
 	}
 
 	/**
-	 * A new item's own packet. It carries only InstanceID and Persistence: the
-	 * prefab brings its Equippable, Weapon or Consumable components back with
-	 * default state, which is what a newly created item should have.
-	 */
-	private static Optional<Property> buildItemPacket (
-		final Property template
-		, final String guid
-		, final String prefabName
-		, final String prefabPath
-		, final String ownerName) {
-
-		return PacketMint.mint(template
-			, new PacketMint.Identity(
-				prefabName + "(Clone)", guid, UUID.fromString(guid), prefabPath, ownerName, null)
-			, (type, component) -> "InstanceID".equals(type) || "Persistence".equals(type)
-			, (type, copy) -> {});
-	}
-
-	private static Optional<CollectionProperty> findEquipmentSlots (final Property character) {
-		return findEquipmentList(character, "EquipmentSetSerialized");
-	}
-
-	private static Optional<CollectionProperty> findEquipmentList (
-		final Property character, final String listName) {
-
-		return ((ComplexProperty) character)
-			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-			.flatMap(c -> EKUtils.findSubComponent(c, EQUIPMENT))
-			.<DictionaryProperty>flatMap(e -> e.findProperty("Variables"))
-			.flatMap(v -> v.findEntry(listName));
-	}
-
-	private static String guidOf (final Property property) {
-		if (!(property instanceof SimpleProperty)
-			|| ((SimpleProperty) property).value == null) {
-
-			return "";
-		}
-
-		final String guid = ((SimpleProperty) property).value.toString();
-		return EMPTY_GUID.equals(guid) ? "" : guid;
-	}
-
-	// Equipment slots hold real UUID objects, not their text — writing a String
-	// through Property.update leaves the serializer emitting the wrong type and
-	// the save no longer reads back.
-	private static boolean setGuid (final Property property, final String guid) {
-		if (!(property instanceof SimpleProperty)) {
-			logger.error("Equipment slot was not a simple property.%n");
-			return false;
-		}
-
-		final UUID value = UUID.fromString(guid);
-		((SimpleProperty) property).value = value;
-		property.obj = value;
-		return true;
-	}
-
-	private static void addGuid (final CollectionProperty list, final String guid) {
-		final SimpleProperty item = new SimpleProperty(null, new TypePair(UUID.class, null));
-		item.value = UUID.fromString(guid);
-		item.obj = item.value;
-		list.items.add(item);
-	}
-
-	/**
-	 * An item's prefab path, rebuilt from its own packet plus the catalog.
+	 * An item's prefab path, rebuilt from its own object plus the catalog.
 	 * A save records something like
 	 * {@code Assets/Data/Prefabs/Items/Rings/Ring_PREORDER_Gauns_Pledge.prefab},
-	 * and the packet's ObjectName gives the exact-case file name. Only that
+	 * and the object's ObjectName gives the exact-case file name. Only that
 	 * file name actually matters — {@code GameResources.LoadPrefab} throws the
 	 * directory away and lowercases the rest — but keeping the real directory
 	 * makes edited saves look like the game wrote them.
 	 */
-	private static Optional<String> prefabPathOf (
-		final List<Property> packets, final String itemGuid) {
-
-		for (final Property packet : packets) {
-			if (!(packet.obj instanceof ObjectPersistencePacket)) {
-				continue;
-			}
-
-			final ObjectPersistencePacket item = (ObjectPersistencePacket) packet.obj;
-			if (!itemGuid.equalsIgnoreCase(item.ObjectID) || item.ObjectName == null) {
-				continue;
-			}
-
-			final String prefab = item.ObjectName.replace("(Clone)", "").trim();
-			final Optional<ItemCatalog.Entry> entry =
-				ItemCatalog.getInstance().lookup(prefab);
-
-			final String directory = entry
-				.map(e -> e.path)
-				.filter(p -> !p.isEmpty() && p.lastIndexOf('/') > 0)
-				.map(p -> p.substring(0, p.lastIndexOf('/') + 1))
-				.orElse("Assets/Data/Prefabs/Items/");
-
-			return Optional.of(directory + prefab + ".prefab");
-		}
-
-		logger.error("No packet for item '%s'; cannot rebuild its prefab path.%n", itemGuid);
-		return Optional.empty();
-	}
-
-	/**
-	 * Manufactures the {@code InventoryItem} entry an unequipped item needs.
-	 * The type strings are copied from an entry that already exists in this
-	 * save rather than hardcoded, so the result is byte-compatible with
-	 * whatever the game wrote.
-	 */
-	private Optional<Property> buildInventoryEntry (
-		final List<Property> packets, final String itemGuid, final int uiSlot) {
-
-		final Optional<String> baseItem = prefabPathOf(packets, itemGuid);
-		if (!baseItem.isPresent()) {
+	private static Optional<String> prefabPathOf (final SaveModel save, final String itemGuid) {
+		final Optional<SaveObject> item = save.object(itemGuid).filter(object -> object.name() != null);
+		if (!item.isPresent()) {
+			logger.error("No packet for item '%s'; cannot rebuild its prefab path.%n", itemGuid);
 			return Optional.empty();
 		}
 
-		final Optional<ComplexProperty> template = findAnyInventoryEntry(packets);
-		if (!template.isPresent()) {
-			logger.error(
-				"This save has no InventoryItem to model a new entry on.%n");
+		final String prefab = item.get().name().replace("(Clone)", "").trim();
+		final Optional<ItemCatalog.Entry> entry = ItemCatalog.getInstance().lookup(prefab);
 
-			return Optional.empty();
-		}
+		final String directory = entry
+			.map(e -> e.path)
+			.filter(p -> !p.isEmpty() && p.lastIndexOf('/') > 0)
+			.map(p -> p.substring(0, p.lastIndexOf('/') + 1))
+			.orElse("Assets/Data/Prefabs/Items/");
 
-		final ComplexProperty entry =
-			new ComplexProperty(null, template.get().type);
-
-		for (final Property field : template.get().properties) {
-			if (!(field instanceof SimpleProperty) || field.name == null) {
-				continue;
-			}
-
-			final Object value;
-			switch (field.name) {
-				case "BaseItem":        value = baseItem.get(); break;
-				case "uiSlot":          value = uiSlot; break;
-				case "StackSize":       value = 1; break;
-				case "stackSize":       value = 1; break;
-				case "Original":        value = false; break;
-				case "AreaLootSource":  value = false; break;
-				default:                value = ((SimpleProperty) field).value; break;
-			}
-
-			final SimpleProperty copy = new SimpleProperty(field.name, field.type);
-			copy.value = value;
-			copy.obj = value;
-			entry.properties.add(copy);
-		}
-
-		return Optional.of(entry);
-	}
-
-	private static Optional<ComplexProperty> findAnyInventoryEntry (
-		final List<Property> packets) {
-
-		for (final Property packet : packets) {
-			if (!(packet instanceof ComplexProperty)) {
-				continue;
-			}
-
-			final Optional<SingleDimensionalArrayProperty> components =
-				((ComplexProperty) packet).findProperty("ComponentPackets");
-
-			if (!components.isPresent()) {
-				continue;
-			}
-
-			for (final Object component : components.get().items) {
-				if (!(component instanceof ComplexProperty)) {
-					continue;
-				}
-
-				final Optional<DictionaryProperty> variables =
-					((ComplexProperty) component).findProperty("Variables");
-
-				if (!variables.isPresent()) {
-					continue;
-				}
-
-				final Optional<CollectionProperty> list = variables.get().findEntry("ItemList");
-				if (!list.isPresent()) {
-					continue;
-				}
-
-				for (final Property entry : list.get().items) {
-					if (entry instanceof ComplexProperty
-						&& !((ComplexProperty) entry).properties.isEmpty()) {
-
-						return Optional.of((ComplexProperty) entry);
-					}
-				}
-			}
-		}
-
-		return Optional.empty();
-	}
-
-	private static boolean setBaseItem (final Property itemProperty, final String baseItem) {
-		if (!(itemProperty instanceof ComplexProperty)) {
-			return false;
-		}
-
-		final Optional<Property> field = findExact((ComplexProperty) itemProperty, "BaseItem");
-		if (!field.isPresent()) {
-			logger.error("Inventory item is missing BaseItem.%n");
-			return false;
-		}
-
-		return Property.update(field.get(), baseItem);
-	}
-
-	// The game keeps one item per uiSlot and fills gaps with the lowest free
-	// index (BaseInventory.FirstFreeSlot), so mirror that rather than letting
-	// two items claim the same tile.
-	private static int freeSlot (
-		final CollectionProperty itemList, final int preferred, final int ignoreIndex) {
-
-		final Set<Integer> taken = new HashSet<>();
-		for (int i = 0; i < itemList.items.size(); i++) {
-			if (i == ignoreIndex) {
-				continue;
-			}
-
-			slotOf(itemList.items.get(i)).ifPresent(taken::add);
-		}
-
-		if (preferred >= 0 && !taken.contains(preferred)) {
-			return preferred;
-		}
-
-		int slot = 0;
-		while (taken.contains(slot)) {
-			slot++;
-		}
-
-		return slot;
-	}
-
-	private static Optional<Integer> slotOf (final Property itemProperty) {
-		if (!(itemProperty instanceof ComplexProperty)) {
-			return Optional.empty();
-		}
-
-		return findExact((ComplexProperty) itemProperty, "uiSlot")
-			.filter(p -> p instanceof SimpleProperty)
-			.map(p -> ((SimpleProperty) p).value)
-			.filter(v -> v instanceof Integer)
-			.map(v -> (Integer) v);
-	}
-
-	private static boolean setSlot (final Property itemProperty, final int slot) {
-		if (!(itemProperty instanceof ComplexProperty)) {
-			logger.error("Inventory item entry was not a ComplexProperty.%n");
-			return false;
-		}
-
-		final Optional<Property> uiSlot = findExact((ComplexProperty) itemProperty, "uiSlot");
-		if (!uiSlot.isPresent()) {
-			logger.error("Inventory item is missing uiSlot.%n");
-			return false;
-		}
-
-		return Property.update(uiSlot.get(), slot);
+		return Optional.of(directory + prefab + ".prefab");
 	}
 
 	private static boolean reparent (
-		final List<Property> packets, final String itemGuid, final Property newOwner) {
+		final SaveModel save, final String itemGuid, final SaveObject newOwner)
+		throws WriteRefusedException {
 
-		final String ownerName = ((ObjectPersistencePacket) newOwner.obj).ObjectName;
-		for (final Property packet : packets) {
-			if (!(packet.obj instanceof ObjectPersistencePacket)) {
-				continue;
-			}
-
-			if (!itemGuid.equalsIgnoreCase(((ObjectPersistencePacket) packet.obj).ObjectID)) {
-				continue;
-			}
-
-			final Optional<Property> parent = ((ComplexProperty) packet).findProperty("Parent");
-			if (!parent.isPresent()) {
-				logger.error("Item packet '%s' has no Parent property.%n", itemGuid);
-				return false;
-			}
-
-			return Property.update(parent.get(), ownerName);
-		}
-
-		logger.error("Item '%s' had no standalone packet to reparent.%n", itemGuid);
-		return false;
-	}
-
-	// InventoryItem is the one C# type in the whole format with both a
-	// backing field ("stackSize") and a same-named property ("StackSize")
-	// independently serialized (Polenter.Serialization doesn't know the
-	// property just wraps the field). ComplexProperty.findProperty() matches
-	// case-insensitively — exactly right for bridging C#/Java naming
-	// elsewhere, but here it would resolve BOTH names to whichever of the
-	// two appears first, silently leaving the other one stale. Match exact
-	// case instead so both are actually found and updated; the real game
-	// always writes them in lockstep, so both must agree on write-back too.
-	private static boolean setStackSize (final Property itemProperty, final int stackSize) {
-		if (!(itemProperty instanceof ComplexProperty)) {
-			logger.error("Inventory item entry was not a ComplexProperty.%n");
+		final Optional<SaveObject> item = save.object(itemGuid);
+		if (!item.isPresent()) {
+			logger.error("Item '%s' had no standalone packet to reparent.%n", itemGuid);
 			return false;
 		}
 
-		final ComplexProperty item = (ComplexProperty) itemProperty;
-		final Optional<Property> lower = findExact(item, "stackSize");
-		final Optional<Property> upper = findExact(item, "StackSize");
-
-		if (!lower.isPresent() || !upper.isPresent()) {
-			logger.error("Inventory item is missing stackSize/StackSize.%n");
-			return false;
-		}
-
-		return Property.update(lower.get(), stackSize) && Property.update(upper.get(), stackSize);
+		item.get().set("Parent", newOwner.name());
+		return true;
 	}
-
-	private static Optional<Property> findExact (final ComplexProperty complex, final String name) {
-		for (final Property p : complex.properties) {
-			if (p != null && name.equals(p.name)) {
-				return Optional.of(p);
-			}
-		}
-
-		return Optional.empty();
-	}
-
-	private static int indexOfGuid (final CollectionProperty serializedList, final String guid) {
-		for (int i = 0; i < serializedList.items.size(); i++) {
-			final Property item = serializedList.items.get(i);
-			if (item instanceof SimpleProperty
-				&& ((SimpleProperty) item).value != null
-				&& guid.equalsIgnoreCase(((SimpleProperty) item).value.toString())) {
-
-				return i;
-			}
-		}
-
-		return -1;
-	}
-
-	private static Optional<CollectionProperty> findList (
-		final Property character, final String component, final String listName) {
-
-		return ((ComplexProperty) character)
-			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-			.flatMap(c -> EKUtils.findSubComponent(c, component))
-			.<DictionaryProperty>flatMap(inv -> inv.findProperty("Variables"))
-			.flatMap(v -> v.findEntry(listName));
-	}
-
-	private static Optional<Integer> findMaxItems (
-		final Property character, final String component) {
-
-		final Optional<Property> maxItems = ((ComplexProperty) character)
-			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-			.flatMap(c -> EKUtils.findSubComponent(c, component))
-			.<DictionaryProperty>flatMap(inv -> inv.findProperty("Variables"))
-			.flatMap(v -> v.findEntry("MaxItems"));
-
-		return maxItems.filter(p -> p instanceof SimpleProperty)
-			.map(p -> (Integer) ((SimpleProperty) p).value);
-	}
-
 }
