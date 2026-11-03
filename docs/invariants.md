@@ -16,9 +16,9 @@ has the short version.
 2. **Exact type fidelity** on write-back (`save/model/TypedValue`); writing the wrong C# type corrupts the save. A value that cannot be the type the save holds is refused, never replaced by a guess: until 2026-11-02 Save wrote an enum name the game does not have as the enum's first constant.
 3. Only `SimpleProperty` is directly writable (`Property.update`); `EternityDateTime`/`EternityTimeInterval` get field-level updates.
 4. **Follow references before mutating** — the format de-duplicates object graphs; chase `ComplexProperty.reference` via `followReference`.
-5. **Counts must match contents**: the leading object count and every list length (see `CharacterImporter` adjusting `simpleObjCount`).
+5. **Counts must match contents**: the leading object count and every list length. The leading count is derived on every write: `DeserializedPackets.checkWritable` sets it to the objects the file holds (2026-11-03). Eight writers used to set it by hand, `CharacterImporter` by arithmetic, and a slip in any one would have been a file the game reads only part of. A list's `Capacity` is never below its length: across 2,283 packet files (the test saves and 15 real ones, 2026-11-03) the game's own never are, and often more (.NET's growth: 4, 8, 16…), so an add through the save model raises it to the count when the count passes it (`GuidList`, `ItemContainer`).
 6. **Parallel structures stay in sync**: `ItemList` ↔ `SerializedItemList` (UUIDs) ↔ `Equipment` slot UUIDs.
-7. **Manufactured objects must be game-accurate**: exact C# type strings, full component sets, `Parent` links, cross-referenced GUID lists. `PartyManager` is the reference implementation.
+7. **Manufactured objects must be game-accurate**: exact C# type strings, full component sets, `Parent` links, cross-referenced GUID lists. A new object is minted from one the game wrote (`SaveModel.mint`: fresh copies of the kept components, never the template's own properties, and `InstanceID.Guid` the new object's ID) or, for a component the game adds itself, built with `save/model/ComponentBuilder`, whose types were harvested from saves. `PartyManager` is the reference implementation.
 8. One `Player_*` per save; companions have fixed GUIDs across saves; imported characters must be anchored (`LevelName` + `Location`) or overwrite in place.
 9. All save mutations run on `Environment.mutationWorker` (single-threaded, prevents concurrent-write corruption) — never bypass it. A new Apply handler extends `handlers/SaveMutationHandler`, whose final `onQuery` does the hop; a new character-file action goes through `handlers/ChrDialog`.
 10. Raw-tab-style variables are largely untested in-game; new UI features should target verified variables.
@@ -94,8 +94,8 @@ has the short version.
     showing a damaged save (the opener's `SHORT_READ` strip), and
     `DeserializedPackets.replace`/`reserialize` refuse a short read whatever
     the caller has done with it — the verdict is fixed when the file is read,
-    because every manager sets the count to the packets it holds before
-    writing. A failed read leaves `SharpSerializer.position()` where it was, so
+    because the write sets the count to the packets the file holds
+    (invariant 5). A failed read leaves `SharpSerializer.position()` where it was, so
     reading stops at the first one that cannot move on (asking again for each
     missing packet took three times as long and logged every one); a packet
     that throws is a short read too, not an exception escaping onto a worker
@@ -264,7 +264,7 @@ has the short version.
     never reaches. Code that read the mirror after an edit read stale values:
     `PartyManager` had to note that "after in-memory surgery the obj-side
     component list is stale", `CharacterImporter` kept the two in step by
-    hand, and `PacketMint` builds mirrors with no components at all. Each
+    hand, and the item minting built mirrors with no components at all. Each
     writer also found the main character and the globals its own way
     (`startsWith("Player_")`, `toLowerCase().startsWith("player_")`,
     `startsWith("Global")`), with its own walk down to a component.
@@ -275,14 +275,28 @@ has the short version.
     `Component` gets and sets its variables. Reads come back `Optional`; a
     write that cannot be made (no such variable, a value of another type)
     throws `WriteRefusedException` with a message for the user and changes
-    nothing. The names it goes by were measured on every save
-    ([save-format.md](save-format.md), "Names the save model goes by"). The
-    import, the stronghold, the quest restore, the resurrection, the party
-    and Save went over to it on 2026-11-02 with byte-identical output
-    (`UnchangedWritesTest`); the inventory, the loadouts, the vendors and
-    `PartyManager`'s stored-record builder (which reads only what nothing
-    edits) are still to move, and the opener and the comparison read the mirror, which
-    is right for a read of an unedited file.
+    nothing. The model is the file's own list, live: `add` refuses an ID the
+    file already holds, `remove` takes out exactly that object, and
+    `removeUnlisted(ids)` takes out an item's object only when no list in
+    the file names it any more. A `GuidList` (`Component.guidList`) is a
+    list of GUIDs (the worn equipment, the weapon sets, a roster) read in
+    any case and written as real GUIDs; an `ItemContainer`
+    (`Component.itemContainer`) is a container's `ItemList` and
+    `SerializedItemList` kept in step (invariant 6): an entry and its GUID
+    go in, come out and move together, and an item that moves to another
+    character takes its object's `Parent` with it. `mint` makes a new object
+    out of one the game wrote (invariant 7). The names it goes by were
+    measured on every save ([save-format.md](save-format.md), "Names the
+    save model goes by"). The import, the stronghold, the quest restore, the
+    resurrection, the party and Save went over to it on 2026-11-02, and every
+    other writer on 2026-11-03 (achievements, grimoires, abilities, vendors,
+    the inventory, loadouts, export), with byte-identical output
+    (`UnchangedWritesTest`, and the probe over every test save) except
+    where an add now raises a list's `Capacity` (invariant 5).
+    `EKUtils.findPacketById` and `findSubComponent` are gone; the opener,
+    the comparisons and the vendor list read the mirror through
+    `unwrapPacket` and `findComponent`, which is right for a read of an
+    unedited file.
 
 ## Checking every write (2026-09-27)
 

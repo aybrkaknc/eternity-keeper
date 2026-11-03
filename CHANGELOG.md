@@ -37,6 +37,12 @@
   the Java Access Bridge is switched on** (screen readers and magnifiers
   often switch it on). It starts now. The editor's window is a web page
   with its own accessibility, which the bridge never served.
+- Removing an item from a pack no longer deletes the item itself while
+  another list in the save still names it.
+- An inventory, vendor or ability change the save could not take in the
+  shape it expected now says what stopped it, and nothing is changed. A list
+  that receives items also records room for them, as the game's own saves
+  always do.
 - **Save could quietly write a value the game does not have.** A choice the
   game does not know was saved as the first one in its list, and a number or
   a yes/no that could not be read was skipped without a word. Save now stops

@@ -156,12 +156,15 @@ with each feature's data when a save loads.
 3. **Follow references before mutating.** The format de-duplicates object
    graphs, so a property may be a reference to one elsewhere.
 4. **Counts match contents**: the leading object count and every list length.
+   The write sets the leading count itself; add to a list through the save
+   model's `GuidList` or `ItemContainer`, which raise its `Capacity` with it.
 5. **Parallel structures stay in step**: `ItemList`, `SerializedItemList`
    (UUIDs) and the equipment slots.
 6. **A new object is complete**: exact type strings, every component, a
-   `Parent` link, and an `InstanceID.Guid` equal to its own `ObjectID`. Copy
-   components from a template with `save/PacketMint`; never reuse the
-   template's own `Property` objects.
+   `Parent` link, and an `InstanceID.Guid` equal to its own `ObjectID`. Mint
+   it from an object the game wrote with `SaveModel.mint`, or build a
+   component the game adds itself with `save/model/ComponentBuilder`; never
+   reuse a template's own `Property` objects.
 7. **Mutations run on `Environment.mutationWorker`.** A new edit handler
    extends `handlers/SaveMutationHandler`, which does that.
 8. **The page never replaces its save data wholesale** after an edit; replies
@@ -204,7 +207,8 @@ with each feature's data when a save loads.
    `WorkingSave.forEditing` or `forReading`, never from the list's entry.
 18. **Writers read and write the property tree, never the mirror objects the
    deserializer also builds**, which an edit does not change. Find objects,
-   components and variables through the save model (`save/model/SaveModel`);
+   components and variables through the save model (`save/model/SaveModel`),
+   and lists of GUIDs and items through its `GuidList` and `ItemContainer`;
    [docs/glossary.md](docs/glossary.md) says what each word means.
 
 ## Testing in the game

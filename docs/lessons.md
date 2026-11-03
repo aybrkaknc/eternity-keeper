@@ -276,7 +276,7 @@ knowing before touching the code again:
   handler extends `SaveMutationHandler` (worker hop, working-save lookup, reopen);
   a catalog browser extends `CatalogQuery` (worker hop, JSON parse, `offset`/`limit`/
   `page`, and it answers even when the search throws — before, the browser spun
-  forever); a new object is minted with `save/PacketMint` (header override, copied
+  forever); a new object is minted with `SaveModel.mint` (header override, copied
   components, `InstanceID.Guid`); icons come from `save/IconFolder`; handlers are
   registered by adding one row to the `JSHandlers.handlers` table (a test scans the
   package for handlers missing from it).

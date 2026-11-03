@@ -18,7 +18,7 @@ What each *feature* reads and writes, in detail, is in [features.md](features.md
 - Data flow: `SavedGameOpener` → **scalar-only** JSON to the UI → UI edits its copy → `ChangesSaver` re-deserializes the original, applies updates to the `Property` tree, reserializes, zips a NEW save. The UI never sees complex objects.
 - **Two write tiers**:
   - *Scalar* (generic, tested): `ChangesSaver.updateVariables` with `save/model/TypedValue` — int/float/bool/String/enum/UnsignedInteger/EternityDateTime; a value that is not the type the save holds stops the Save.
-  - *Structural* (manual): the `PartyManager`/`CharacterImporter` pattern — find objects, components and variables through the save model (`save/model`, invariant 26; older writers still walk with `findProperty`/`findSubComponent`/`findEntry`), manufacture packets with exact C# type strings.
+  - *Structural* (manual): the `PartyManager`/`CharacterImporter` pattern — find objects, components and variables through the save model (`save/model`, invariant 26), mint objects with `SaveModel.mint` and build components with `ComponentBuilder`, with exact C# type strings.
 - Windows Store→Steam conversion is a serialize-time module rename `UnityEngine.CoreModule`→`UnityEngine` (`SerializerFormat.UNITY_2017`). Normal edits must reserialize with `PRESERVE`.
 
 ## Names the save model goes by
@@ -42,6 +42,12 @@ model each writer had its own rule: Save took any name starting `player_`
 in any case and any starting `Global`, the party `Player_`, the stronghold
 `InGameGlobal(`, and components were matched exactly.
 
+A list's `Capacity`, written beside its items, was measured on 2026-11-03 over
+2,283 packet files (the test environment's saves and 15 real ones, read in
+place): never below the list's length, and often above it, in .NET's growth
+steps (4, 8, 16, 32, 64, 512). `GuidList` and `ItemContainer` raise it to the
+length when an add passes it, and never lower it.
+
 ## Save structure map (from live dump of a real save)
 
 - **Character** (`Player_*`/`Companion_*`): `CharacterStats` = 168 scalar vars — skills (`AthleticsSkill`…`CraftingSkill`, `RemainingSkillPoints`), `Experience`, `Level`, defenses (`BaseWill`/`BaseReflexes`/`BaseFortitude`/`BaseDeflection`), attributes (`BaseMight`…). All already on the tested scalar path. Class/Race/Subrace/Culture/Background enums are already shipped to the UI by `GetGameStructures`.
@@ -50,7 +56,7 @@ in any case and any starting `Global`, the party `Player_`, the stronghold
   Each container holds `ItemList` (List<`InventoryItem`>: `BaseItem` = prefab path string, `stackSize`, `uiSlot`) + parallel `SerializedItemList` (List<UUID>, same index) + `MaxItems`; `uiSlot` is the tile index *within that character's own grid* (0..15). Currency = `PlayerInventory.currencyTotalValue.v`.
   `Equipment` = `EquipmentSetSerialized` (11 UUID slots) + `WeaponSetsSerialized` (8 = 4 sets × primary/secondary) + `SelectedWeaponSetSerialized`. **The 11 slots are ordered by `EquipmentSet.SerializedEquipment`, NOT by the `Equippable.EquipmentSlot` enum — the two disagree** (enum: …RightRing, LeftRing, Hands…; serialized: …Hands, RightRing, LeftRing…). Real order: `Head, Neck, Chest, Hands, RightRing, LeftRing, Cape(deprecated, always empty), Feet, Waist, Grimoire, Pet`. Following the enum silently mislabels every character's gear (caught only by noticing bracers sitting in a "ring" slot).
   Equipped items are referenced by UUID only; resolve one by finding the packet with that `ObjectID` — its `ObjectName` is the prefab name plus a `(Clone)` suffix.
-  Every item's `SerializedItemList` UUID is ALSO the `ObjectID` of its own standalone top-level `ObjectPersistencePacket` elsewhere in the save, **parented to the character carrying it** — one packet per stack, regardless of `stackSize`. Removing an item means deleting all three in sync (`ItemList` entry + `SerializedItemList` UUID + the standalone packet), the same "purge, don't orphan" pattern as `Resurrector`; handing one to another party member means moving it between two characters' lists *and* re-pointing that packet's `Parent`.
+  Every item's `SerializedItemList` UUID is ALSO the `ObjectID` of its own standalone top-level `ObjectPersistencePacket` elsewhere in the save, **parented to the character carrying it** — one packet per stack, regardless of `stackSize`. Removing an item means deleting all three in sync (`ItemList` entry + `SerializedItemList` UUID + the standalone packet, which goes only once no list in the file names it: `SaveModel.removeUnlisted`), the same "purge, don't orphan" pattern as `Resurrector`; handing one to another party member means moving it between two characters' lists *and* re-pointing that packet's `Parent`.
 - **Stronghold** (on `InGameGlobal(Clone)`): scalars `Prestige`/`Security`/`m_Debt`/`AvailableTurns`/`m_currentTurn`/`BonusTurnMoney`/`IsErlTaxActive`… + structural lists (`m_upgradesBuilt`, `m_hirelingsHired`, `m_prisoners`, `SerializedStoredGuids` — the last already mutated by `PartyManager`).
   - **`SerializedIsActivated` is whether the player owns Caed Nua at all.** Setting it true calls `ActivateStronghold(restoring: true)`, which does nothing but set the flag — so the editor gates on it and deliberately does NOT offer to grant the stronghold, since the quest that hands it over also moves the party, advances quest state and spawns the steward.
   - **`Prestige` and `Security` are independent persisted scalars, never recomputed.** `CompleteBuildingUpgrade()` adds an upgrade's `PrestigeAdjustment`/`SecurityAdjustment` once, at the moment of building; `DestroyUpgrade()` subtracts them. Nothing derives either number from `m_upgradesBuilt` on load, so adding to that list without doing the same arithmetic leaves a save the game could never have produced. Same for `UpgradeCompletedGlobalVariableName` (only `EasternBarbican` names one: `b_Eastern_Barbican`).

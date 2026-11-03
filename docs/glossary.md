@@ -29,6 +29,19 @@ what the editor does to one. Where a word names a class, the class is given.
   the game's names for what an editor looks for. The way a writer finds an
   object, a component or a variable, and writes a value as the type the save
   holds.
+- **GUID list** (`save/model/GuidList`): A variable holding a list of GUIDs: the worn equipment
+  (`EquipmentSetSerialized`), the weapon sets, a container's
+  `SerializedItemList`, the stronghold's rosters. An empty slot holds the zero
+  GUID. A list's `Capacity` is written with it and is never below its length
+  (invariant 5).
+- **Item container** (`save/model/ItemContainer`): A component that holds items (`PlayerInventory`, a
+  companion's `Inventory`, `QuickbarInventory`, `StashInventory`, a store):
+  an `ItemList` of `InventoryItem` entries (`BaseItem`, `uiSlot`, `stackSize`)
+  and a `SerializedItemList` naming each entry's item object, at the same
+  place in both lists (invariant 6).
+- **Minting**: Making a new object out of one the game wrote (`SaveModel.mint`), as a new
+  item or ability is made: its own name, ID and parent, fresh copies of the
+  components it keeps (invariant 7).
 - **Main character**, **player**: The one object whose name starts `Player_` (`SaveModel.player`).
 - **Companion**: An object whose name starts `Companion_`. Its `ObjectID` is a GUID fixed
   for that companion in every playthrough.
