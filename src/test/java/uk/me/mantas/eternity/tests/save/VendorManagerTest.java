@@ -40,6 +40,7 @@ import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
 import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 import uk.me.mantas.eternity.tests.TestHarness;
+import uk.me.mantas.eternity.save.model.SaveModel;
 
 import java.io.File;
 import java.io.IOException;
@@ -65,7 +66,7 @@ public class VendorManagerTest extends TestHarness {
 	}
 
 	private static boolean hasPacket (final File file, final String id) throws IOException {
-		return EKUtils.findPacketById(packets(file).getPackets(), id).isPresent();
+		return SaveModel.of(packets(file)).object(id).isPresent();
 	}
 
 	private static Vendor vendor (final File save, final String file, final String id)
@@ -77,7 +78,7 @@ public class VendorManagerTest extends TestHarness {
 
 	private static List<Integer> slots (final File file, final String store) throws IOException {
 		final ObjectPersistencePacket packet = EKUtils.unwrapPacket(
-			EKUtils.findPacketById(packets(file).getPackets(), store).get());
+			SaveModel.of(packets(file)).object(store).get().property());
 
 		final List<Integer> slots = new ArrayList<>();
 		final Object items = EKUtils.findComponent(packet.ComponentPackets, "Store").get()
@@ -363,13 +364,10 @@ public class VendorManagerTest extends TestHarness {
 	private static CollectionProperty storeList (
 		final DeserializedPackets packets, final String store) {
 
-		final ComplexProperty packet =
-			(ComplexProperty) EKUtils.findPacketById(packets.getPackets(), store).get();
-
-		return packet.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-			.flatMap(c -> EKUtils.findSubComponent(c, "Store"))
-			.<DictionaryProperty>flatMap(c -> c.findProperty("Variables"))
-			.flatMap(v -> v.<CollectionProperty>findEntry("SerializedItemList"))
+		return SaveModel.of(packets).object(store)
+			.flatMap(o -> o.component("Store"))
+			.flatMap(c -> c.variable("SerializedItemList"))
+			.map(list -> (CollectionProperty) list)
 			.orElseThrow(() -> new AssertionError("no SerializedItemList on " + store));
 	}
 }

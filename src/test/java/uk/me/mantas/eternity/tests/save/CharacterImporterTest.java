@@ -31,6 +31,7 @@ import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.tests.TestHarness;
+import uk.me.mantas.eternity.save.model.SaveObject;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -640,22 +641,15 @@ public class CharacterImporterTest extends TestHarness {
 		final Property player = world.getPackets().stream()
 			.filter(property -> PLAYER_GUID.equals(((ObjectPersistencePacket) property.obj).ObjectID))
 			.findFirst().get();
-		final ComplexProperty component = EKUtils.findSubComponent(
-			((ComplexProperty) player).<uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty>
-				findProperty("ComponentPackets").get(), "PlayerInventory").get();
-		return component.<uk.me.mantas.eternity.serializer.properties.DictionaryProperty>
-			findProperty("Variables").get();
+		return SaveObject.of(player).get().component("PlayerInventory").get().property()
+			.<uk.me.mantas.eternity.serializer.properties.DictionaryProperty>findProperty("Variables").get();
 	}
 
 	private Property sessionProperty (final DeserializedPackets world) {
 		final Property player = world.getPackets().stream()
 			.filter(property -> PLAYER_GUID.equals(((ObjectPersistencePacket) property.obj).ObjectID))
 			.findFirst().get();
-		final ComplexProperty component = EKUtils.findSubComponent(
-			((ComplexProperty) player).<uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty>
-				findProperty("ComponentPackets").get(), "Player").get();
-		return component.<uk.me.mantas.eternity.serializer.properties.DictionaryProperty>
-			findProperty("Variables").get().<Property>findEntry("SessionID").get();
+		return SaveObject.of(player).get().component("Player").get().variable("SessionID").get();
 	}
 
 	private UUID sessionOf (final DeserializedPackets world) {

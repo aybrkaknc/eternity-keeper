@@ -32,6 +32,7 @@ import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 import uk.me.mantas.eternity.tests.TestHarness;
+import uk.me.mantas.eternity.save.model.SaveObject;
 
 import java.io.File;
 import java.io.IOException;
@@ -83,11 +84,9 @@ public class AchievementsEnablerTest extends TestHarness {
 				continue;
 			}
 
-			final Optional<Property> flag = ((ComplexProperty) p)
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(c -> EKUtils.findSubComponent(c, component))
-				.flatMap(g -> g.<DictionaryProperty>findProperty("Variables"))
-				.flatMap(v -> v.findEntry(variable));
+			final Optional<Property> flag = SaveObject.of(p)
+				.flatMap(o -> o.component(component))
+				.flatMap(c -> c.variable(variable));
 
 			if (flag.isPresent()) {
 				return Property.update(flag.get(), value);

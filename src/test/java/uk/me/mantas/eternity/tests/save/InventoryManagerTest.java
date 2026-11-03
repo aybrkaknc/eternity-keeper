@@ -34,6 +34,7 @@ import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 import uk.me.mantas.eternity.tests.TestHarness;
+import uk.me.mantas.eternity.save.model.SaveObject;
 
 import java.io.File;
 import java.io.IOException;
@@ -542,11 +543,9 @@ public class InventoryManagerTest extends TestHarness {
 			if (!(p.obj instanceof ObjectPersistencePacket)) continue;
 			if (!ELWYN.equalsIgnoreCase(((ObjectPersistencePacket) p.obj).ObjectID)) continue;
 
-			final Optional<Property> entry = ((ComplexProperty) p)
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(c -> EKUtils.findSubComponent(c, component))
-				.<DictionaryProperty>flatMap(inv -> inv.findProperty("Variables"))
-				.flatMap(v -> v.findEntry("MaxItems"));
+			final Optional<Property> entry = SaveObject.of(p)
+				.flatMap(o -> o.component(component))
+				.flatMap(inv -> inv.variable("MaxItems"));
 
 			assertTrue(entry.isPresent());
 			assertTrue(Property.update(entry.get(), maxItems));

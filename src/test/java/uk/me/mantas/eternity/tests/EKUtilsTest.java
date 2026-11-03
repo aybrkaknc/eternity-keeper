@@ -120,30 +120,6 @@ public class EKUtilsTest {
 		assertSame(needle, findComponent(haystack, "FINDME").get());
 	}
 
-	@Test
-	public void findSubComponentTest () {
-		final SingleDimensionalArrayProperty haystack = mock(SingleDimensionalArrayProperty.class);
-		final ComplexProperty needleProperty = mock(ComplexProperty.class);
-		final ComplexProperty needleProperty2 = mock(ComplexProperty.class);
-		final ComponentPersistencePacket needle = mock(ComponentPersistencePacket.class);
-		final ComponentPersistencePacket needle2 = mock(ComponentPersistencePacket.class);
-
-		needle.TypeString = "FindMe";
-		needle2.TypeString = "FindMe";
-
-		needleProperty.obj = needle;
-		needleProperty2.obj = needle2;
-
-		haystack.items = new ArrayList<ComplexProperty>() {{
-			add(null);
-			add(needleProperty);
-			add(needleProperty2);
-		}};
-
-		assertFalse(findSubComponent(haystack, "404").isPresent());
-		assertSame(needleProperty, findSubComponent(haystack, "FINDME").get());
-	}
-
 	// Two side-by-side 2560x1440 monitors, both top-aligned at y=0 — the same
 	// layout as the machine that first hit the off-screen-window bug.
 	private static final Rectangle[] TWO_MONITORS = new Rectangle[] {

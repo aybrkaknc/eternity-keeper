@@ -27,6 +27,8 @@ import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
 import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
+import uk.me.mantas.eternity.save.model.SaveModel;
+import uk.me.mantas.eternity.save.model.SaveObject;
 
 import java.io.File;
 import java.util.List;
@@ -53,10 +55,7 @@ public class PacketHelpersTest extends TestHarness {
 	}
 
 	private static ComplexProperty instanceIdOf (final Property packet) {
-		final SingleDimensionalArrayProperty components = ((ComplexProperty) packet)
-			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets").get();
-
-		return EKUtils.findSubComponent(components, "InstanceID").get();
+		return SaveObject.of(packet).get().component("InstanceID").get().property();
 	}
 
 	private static SimpleProperty guidOf (final ComplexProperty instanceId) {
@@ -110,17 +109,18 @@ public class PacketHelpersTest extends TestHarness {
 	public void aPacketIsFoundByItsObjectIdInAnyCase () throws Exception {
 		final List<Property> packets = fixture();
 		final Property character = someCharacter(packets);
-		final String id = ((ObjectPersistencePacket) character.obj).ObjectID;
+		final String id = SaveObject.of(character).get().id();
+		final SaveModel save = SaveModel.of(packets);
 
-		assertSame(character, EKUtils.findPacketById(packets, id).get());
-		assertSame(character, EKUtils.findPacketById(packets, id.toUpperCase()).get());
-		assertSame(character, EKUtils.findPacketById(packets, id.toLowerCase()).get());
+		assertSame(character, save.object(id).get().property());
+		assertSame(character, save.object(id.toUpperCase()).get().property());
+		assertSame(character, save.object(id.toLowerCase()).get().property());
 	}
 
 	@Test
 	public void anUnknownObjectIdFindsNothing () throws Exception {
-		final Optional<Property> found =
-			EKUtils.findPacketById(fixture(), UUID.randomUUID().toString());
+		final Optional<SaveObject> found =
+			SaveModel.of(fixture()).object(UUID.randomUUID().toString());
 
 		assertFalse(found.isPresent());
 	}

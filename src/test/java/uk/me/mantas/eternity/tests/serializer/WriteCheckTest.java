@@ -32,6 +32,8 @@ import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
 import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 import uk.me.mantas.eternity.tests.TestHarness;
+import uk.me.mantas.eternity.save.model.SaveModel;
+import uk.me.mantas.eternity.save.model.SaveObject;
 
 import java.io.File;
 import java.io.IOException;
@@ -75,8 +77,8 @@ public class WriteCheckTest extends TestHarness {
 			.orElseThrow(() -> new AssertionError("the fixture reads"));
 	}
 
-	private static ComplexProperty packet (final DeserializedPackets packets, final String id) {
-		return (ComplexProperty) EKUtils.findPacketById(packets.getPackets(), id)
+	private static SaveObject packet (final DeserializedPackets packets, final String id) {
+		return SaveModel.of(packets).object(id)
 			.orElseThrow(() -> new AssertionError("no packet " + id));
 	}
 
@@ -84,11 +86,8 @@ public class WriteCheckTest extends TestHarness {
 		final DeserializedPackets packets, final String id, final String component
 		, final String name) {
 
-		return packet(packets, id)
-			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-			.flatMap(components -> EKUtils.findSubComponent(components, component))
-			.<DictionaryProperty>flatMap(c -> c.findProperty("Variables"))
-			.flatMap(variables -> variables.<Property>findEntry(name))
+		return packet(packets, id).component(component)
+			.flatMap(c -> c.variable(name))
 			.orElseThrow(() -> new AssertionError("no " + component + "." + name + " on " + id));
 	}
 
@@ -169,7 +168,7 @@ public class WriteCheckTest extends TestHarness {
 	public void twoObjectsWithOneIdAreRefused () throws Exception {
 		final File file = copy();
 		final DeserializedPackets packets = read(file);
-		assertTrue(Property.update(packet(packets, PET), "ObjectID", RING));
+		assertTrue(Property.update(packet(packets, PET).property(), "ObjectID", RING));
 
 		refused(packets, file);
 	}
@@ -200,7 +199,7 @@ public class WriteCheckTest extends TestHarness {
 		final File file = copy();
 		final DeserializedPackets packets = read(file);
 		final List<Property> without = new ArrayList<>(packets.getPackets());
-		assertTrue(without.remove(packet(packets, RING)));
+		assertTrue(without.remove(packet(packets, RING).property()));
 		packets.setPackets(without);
 		assertTrue(Property.update(packets.getCount(), without.size()));
 
@@ -253,7 +252,7 @@ public class WriteCheckTest extends TestHarness {
 		final File file = copy();
 		final DeserializedPackets original = read(file);
 		final List<Property> without = new ArrayList<>(original.getPackets());
-		assertTrue(without.remove(packet(original, PET)));
+		assertTrue(without.remove(packet(original, PET).property()));
 		assertTrue(Property.update(original.getCount(), without.size()));
 		new DeserializedPackets(without, original.getCount()).replace(file);
 
@@ -264,7 +263,7 @@ public class WriteCheckTest extends TestHarness {
 
 		final DeserializedPackets worse = read(file);
 		final List<Property> alsoWithout = new ArrayList<>(worse.getPackets());
-		assertTrue(alsoWithout.remove(packet(worse, RING)));
+		assertTrue(alsoWithout.remove(packet(worse, RING).property()));
 		worse.setPackets(alsoWithout);
 		assertTrue(Property.update(worse.getCount(), alsoWithout.size()));
 

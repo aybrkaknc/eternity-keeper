@@ -56,6 +56,7 @@ import uk.me.mantas.eternity.serializer.properties.ReferenceTargetProperty;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
 import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 import uk.me.mantas.eternity.tests.TestHarness;
+import uk.me.mantas.eternity.save.model.SaveObject;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -296,12 +297,10 @@ public class UnchangedWritesTest extends TestHarness {
 				continue;
 			}
 
-			final Optional<Property> entry = ((ComplexProperty) packet)
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(components -> EKUtils.findSubComponent(components, "GlobalVariables"))
-				.flatMap(globals -> globals.<DictionaryProperty>findProperty("Variables"))
-				.flatMap(variables -> variables.<DictionaryProperty>findEntry("m_data"))
-				.flatMap(data -> data.findEntry(name));
+			final Optional<Property> entry = SaveObject.of(packet)
+				.flatMap(object -> object.component("GlobalVariables"))
+				.flatMap(globals -> globals.variable("m_data"))
+				.flatMap(data -> ((DictionaryProperty) data).findEntry(name));
 			assertTrue(entry.isPresent());
 			return entry.get();
 		}

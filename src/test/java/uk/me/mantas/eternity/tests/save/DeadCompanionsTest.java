@@ -36,6 +36,7 @@ import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 import uk.me.mantas.eternity.tests.TestHarness;
+import uk.me.mantas.eternity.save.model.SaveObject;
 
 import java.io.File;
 import java.io.IOException;
@@ -81,11 +82,9 @@ public class DeadCompanionsTest extends TestHarness {
 				continue;
 			}
 
-			final Optional<Property> entry = ((ComplexProperty) p)
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(c -> EKUtils.findSubComponent(c, "GlobalVariables"))
-				.flatMap(g -> g.<DictionaryProperty>findProperty("Variables"))
-				.flatMap(v -> v.<DictionaryProperty>findEntry("m_data"))
+			final Optional<Property> entry = SaveObject.of(p)
+				.flatMap(o -> o.component("GlobalVariables"))
+				.flatMap(g -> g.variable("m_data"))
 				.flatMap(d -> ((DictionaryProperty) d).findEntry(flag));
 
 			assertTrue("flag " + flag + " not present in fixture globals", entry.isPresent());

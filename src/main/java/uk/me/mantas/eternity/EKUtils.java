@@ -29,7 +29,6 @@ import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
 import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
-import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 
 import java.awt.*;
 import java.io.File;
@@ -177,6 +176,12 @@ public class EKUtils {
 		return (u, v) -> { throw new IllegalStateException(String.format("Duplicate key %s", u)); };
 	}
 
+	// The finders below read the deserializer's mirror of an object (its
+	// ObjectPersistencePacket), which is what the file held when it was read:
+	// they are for readers, the opener and the comparisons. Anything that
+	// writes a save reads and writes the tree, through the save model
+	// (invariant 26).
+
 	public static Optional<Property> findProperty (
 		final List<Property> haystack
 		, final String needle) {
@@ -237,34 +242,8 @@ public class EKUtils {
 			.findFirst();
 	}
 
-	@SuppressWarnings("unchecked")
-	public static Optional<ComplexProperty> findSubComponent (
-		final SingleDimensionalArrayProperty haystack
-		, final String needle) {
-
-		return ((List<Property>) haystack.items).stream()
-			.filter(component -> component != null)
-			.filter(component -> component instanceof ComplexProperty)
-			.map(ComplexProperty.class::cast)
-			.filter(component ->
-				((ComponentPersistencePacket) component.obj).TypeString.equalsIgnoreCase(needle))
-			.findFirst();
-	}
-
 	/**
-	 * The packet whose ObjectID is {@code objectID}, compared ignoring case —
-	 * the save writes GUIDs in whatever case the game formatted them in.
-	 */
-	public static Optional<Property> findPacketById (
-		final List<Property> packets, final String objectID) {
-
-		return packets.stream()
-			.filter(p -> p.obj instanceof ObjectPersistencePacket)
-			.filter(p -> objectID.equalsIgnoreCase(((ObjectPersistencePacket) p.obj).ObjectID))
-			.findFirst();
-	}
-
-	/**
+	 * An independent copy of a component packet	/**
 	 * An independent copy of a component packet: its TypeString and a fresh
 	 * Variables dictionary of new SimpleProperty instances, every type carried
 	 * across exactly.
