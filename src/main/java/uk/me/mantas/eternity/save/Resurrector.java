@@ -359,11 +359,10 @@ public class Resurrector {
 				"Could not restore quest '%s'; resurrecting without it.%n", questPath);
 		}
 
-		// Merge, fix the leading count, rewrite the file.
+		// Merge and rewrite the file.
 		final List<Property> merged = new ArrayList<>(incoming);
 		merged.addAll(retainedDead);
 		dead.setPackets(merged);
-		Property.update(dead.getCount(), merged.size());
 
 		dead.replace(deadMobileObjects);
 		return true;

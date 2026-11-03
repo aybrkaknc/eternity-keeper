@@ -416,10 +416,6 @@ public class InventoryManager {
 
 		if (packetsChanged) {
 			deserialized.setPackets(packets);
-			if (!Property.update(deserialized.getCount(), packets.size())) {
-				logger.error("Unable to update the leading packet count.%n");
-				return false;
-			}
 		}
 
 		deserialized.replace(mobileObjects);

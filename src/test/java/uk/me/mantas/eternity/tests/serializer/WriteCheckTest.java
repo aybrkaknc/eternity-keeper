@@ -129,18 +129,39 @@ public class WriteCheckTest extends TestHarness {
 		assertEquals(12345, ((SimpleProperty) variable(read(file), ELWYN, "CharacterStats", "Experience")).obj);
 	}
 
-	// Every manager sets the count to the packets it holds; one that forgot
-	// would leave every read after it stopping early.
+	// Every manager used to set the count to the packets it held, and one that
+	// forgot left every read after it stopping early. The count is now what
+	// the file holds, whoever wrote it.
 	@Test
-	public void aCountLeftBehindIsRefused () throws Exception {
+	public void theCountIsWhatTheFileHolds () throws Exception {
 		final File file = copy();
 		final DeserializedPackets packets = read(file);
 		final List<Property> fewer = new ArrayList<>(packets.getPackets());
 		fewer.remove(fewer.size() - 1);
 		packets.setPackets(fewer);
 
-		final InconsistentWriteException e = refused(packets, file);
-		assertTrue(e.getMessage(), e.getMessage().contains("objects"));
+		packets.replace(file);
+		final DeserializedPackets after = read(file);
+		assertTrue(after.isWhole());
+		assertEquals(fewer.size(), after.getPackets().size());
+		assertEquals(fewer.size(), ((Number) after.getCount().obj).intValue());
+	}
+
+	// The same for a file put together in memory, with whatever count it was
+	// handed.
+	@Test
+	public void aNewFilesCountIsWhatItHolds () throws Exception {
+		final File file = copy();
+		final DeserializedPackets packets = read(file);
+		final List<Property> two = new ArrayList<>(packets.getPackets().subList(0, 2));
+
+		final File written = new File(file.getParentFile(), "two.save");
+		assertTrue(written.createNewFile());
+		new DeserializedPackets(two, packets.getCount()).reserialize(written);
+
+		final DeserializedPackets after = read(written);
+		assertTrue(after.isWhole());
+		assertEquals(2, after.getPackets().size());
 	}
 
 	// The item-minting bug: a copied packet kept its template's identity.

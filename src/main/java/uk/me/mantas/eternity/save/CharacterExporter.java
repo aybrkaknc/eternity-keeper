@@ -22,11 +22,9 @@ package uk.me.mantas.eternity.save;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.factory.PacketDeserializerFactory;
-import uk.me.mantas.eternity.factory.SharpSerializerFactory;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
-import uk.me.mantas.eternity.serializer.SharpSerializer;
 import uk.me.mantas.eternity.serializer.ShortReadException;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
@@ -46,7 +44,6 @@ public class CharacterExporter {
 	private final String guid;
 
 	private final PacketDeserializerFactory packetDeserializer;
-	private final SharpSerializerFactory sharpSerializer;
 
 	public CharacterExporter (
 		final String savePath
@@ -73,7 +70,6 @@ public class CharacterExporter {
 
 		final Environment environment = Environment.getInstance();
 		packetDeserializer = environment.factory().packetDeserializer();
-		sharpSerializer = environment.factory().sharpSerializer();
 	}
 
 	/**
@@ -116,9 +112,9 @@ public class CharacterExporter {
 			return false;
 		}
 
-		SharpSerializer serializer = sharpSerializer.forFile(chrFile.getAbsolutePath());
-		Property.update(count, extractedObjects.size());
-		serializer.serializeAll(count, extractedObjects);
+		// The save's own leading count, which the write sets to what the file
+		// holds; the save is never written from this reading.
+		new DeserializedPackets(extractedObjects, count).reserialize(chrFile);
 
 		return true;
 	}

@@ -218,13 +218,18 @@ public class DeserializedPackets {
 		serializer.serializeAll(count, packets);
 	}
 
-	// Whatever a caller has done with a short read since -- setting its count
-	// to the packets it holds included -- it is not written. Nor is an edit
-	// that leaves the file contradicting itself where it did not before.
+	// Whatever a caller has done with a short read since, it is not written.
+	// Nor is an edit that leaves the file contradicting itself where it did
+	// not before. The leading count is not the writer's to keep: it is set
+	// here, to what the file is about to hold (invariant 5).
 	private void checkWritable (final String name) throws WriteRefusedException {
 		final Optional<ShortReadException> shortRead = shortRead();
 		if (shortRead.isPresent()) {
 			throw shortRead.get();
+		}
+
+		if (count != null && count.obj instanceof Number) {
+			Property.update(count, packets.size());
 		}
 
 		final List<String> fresh = new ArrayList<>();

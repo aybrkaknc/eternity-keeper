@@ -20,7 +20,6 @@ package uk.me.mantas.eternity.save;
 
 import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
-import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
@@ -30,7 +29,6 @@ import uk.me.mantas.eternity.serializer.properties.CollectionProperty;
 import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
 import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
-import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
 import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 
 import java.io.File;
@@ -244,12 +242,9 @@ public final class Loadout {
 		final File directory = file.getAbsoluteFile().getParentFile();
 		final File partial = File.createTempFile("EK-loadout", ".partial", directory);
 		try {
-			// The save's own leading count, set to what the file holds; the
-			// save is never written from this reading.
-			final SimpleProperty count = read.getCount();
-			Property.update(count, objects.size());
-			Environment.getInstance().factory().sharpSerializer()
-				.forFile(partial.getAbsolutePath()).serializeAll(count, objects);
+			// The save's own leading count, which the write sets to what the
+			// file holds; the save is never written from this reading.
+			new DeserializedPackets(objects, read.getCount()).reserialize(partial);
 
 			Files.move(partial.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
 		} finally {

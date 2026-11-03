@@ -294,11 +294,6 @@ public class CharacterImporter {
 
 		character.moveTo(levelName, location);
 
-		final SimpleProperty simpleObjCount = deserialized.get().getCount();
-		final int count = (int) simpleObjCount.obj;
-		final int removed = mobileObjects.size() - retainedObjects.size();
-		Property.update(simpleObjCount, count - removed + chrObjects.size());
-
 		final List<Property> totalObjects = new ArrayList<>();
 		totalObjects.addAll(chrObjects);
 		totalObjects.addAll(retainedObjects);

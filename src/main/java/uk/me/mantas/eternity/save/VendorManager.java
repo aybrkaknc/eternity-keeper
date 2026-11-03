@@ -160,9 +160,6 @@ public class VendorManager {
 				, entry.getKey(), taken.size(), before - packets.size());
 
 			read.get().setPackets(packets);
-			if (!Property.update(read.get().getCount(), packets.size())) {
-				return refuse("The object count of " + entry.getKey() + " could not be updated.");
-			}
 
 			planned.put(file, read.get());
 		}

@@ -245,16 +245,7 @@ public class AbilityManager {
 			}
 		}
 
-		// Adding or removing an ability object changes the object count, and
-		// the leading count has to agree with the contents or the save will not
-		// read back. Writing it unconditionally is cheap and leaves no way for
-		// the two to drift.
 		deserialized.setPackets(packets);
-		if (!Property.update(deserialized.getCount(), packets.size())) {
-			logger.error("Unable to update the leading packet count.%n");
-			return false;
-		}
-
 		deserialized.replace(mobileObjects);
 		return true;
 	}

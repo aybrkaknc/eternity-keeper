@@ -179,9 +179,6 @@ public class PartyManager {
 			return true;
 		}
 
-		final SimpleProperty count = deserialized.get().getCount();
-		Property.update(count, packets.size());
-
 		deserialized.get().setPackets(packets);
 		deserialized.get().replace(mobileObjectsFile);
 		return true;
