@@ -26,7 +26,11 @@ import uk.me.mantas.eternity.game.CharacterStats;
 import uk.me.mantas.eternity.game.EternityDateTime;
 import uk.me.mantas.eternity.game.EternityTimeInterval;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
+import uk.me.mantas.eternity.game.AIController;
 import uk.me.mantas.eternity.save.model.Component;
+import uk.me.mantas.eternity.save.model.ComponentBuilder;
+import uk.me.mantas.eternity.save.model.GuidList;
+import uk.me.mantas.eternity.save.model.ItemContainer;
 import uk.me.mantas.eternity.save.model.SaveModel;
 import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.save.model.TypedValue;
@@ -34,6 +38,7 @@ import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.TypePair;
 import uk.me.mantas.eternity.serializer.WriteRefusedException;
+import uk.me.mantas.eternity.serializer.properties.CollectionProperty;
 import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
 import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
@@ -47,6 +52,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -366,6 +372,188 @@ public class SaveModelTest extends TestHarness {
 		broken.properties.set(2, field("ComponentPackets", null));
 		final SaveObject bare = SaveObject.of(broken).get();
 		assertRefused(() -> bare.add(ai.property()), "Bare");
+	}
+
+	private static final String RING_GUID = "c4b7033d-c452-4946-a9ba-9998cb411201";
+	private static final String PET_GUID = "41baf584-9203-44df-a921-62f50000ad74";
+
+	private static int capacity (final GuidList list) {
+		return capacity(list.property());
+	}
+
+	private static int capacity (final CollectionProperty list) {
+		for (final Property field : list.properties) {
+			if ("Capacity".equals(field.name)) {
+				return (Integer) ((SimpleProperty) field).value;
+			}
+		}
+
+		throw new AssertionError("no Capacity");
+	}
+
+	@Test
+	public void aGuidListMatchesInAnyCaseAndWritesRealGuids () throws Exception {
+		final SaveModel save = model();
+		final GuidList slots = save.player().get().component("Equipment").get()
+			.guidList("EquipmentSetSerialized").get();
+		final int size = slots.size();
+
+		slots.set(0, RING_GUID.toUpperCase());
+		assertEquals(0, slots.indexOf(RING_GUID));
+		assertTrue(slots.contains(RING_GUID.toUpperCase()));
+		assertTrue(((SimpleProperty) slots.property().items.get(0)).value instanceof UUID);
+
+		slots.set(0, GuidList.EMPTY);
+		assertEquals("", slots.get(0));
+		assertEquals(-1, slots.indexOf(RING_GUID));
+
+		assertRefused(() -> slots.set(size, RING_GUID), "slot " + size);
+		assertRefused(() -> slots.set(0, "not a guid"), "not a guid");
+		assertRefused(() -> slots.add("not a guid"), "not a guid");
+		assertEquals(size, slots.size());
+	}
+
+	// The game never writes a list's Capacity below its count; an add that
+	// passes it raises it, and one that does not leaves it alone.
+	@Test
+	public void anAddRaisesCapacityOnlyPastIt () throws Exception {
+		final SaveModel save = model();
+		final GuidList guids = save.player().get().component("PlayerInventory").get()
+			.guidList("SerializedItemList").get();
+		final int before = capacity(guids);
+		assertTrue(before >= guids.size());
+
+		while (guids.size() < before) {
+			guids.add(UUID.randomUUID().toString());
+		}
+
+		assertEquals(before, capacity(guids));
+		guids.add(UUID.randomUUID().toString());
+		assertEquals(before + 1, capacity(guids));
+
+		final String last = guids.get(guids.size() - 1);
+		assertTrue(guids.remove(last.toUpperCase()));
+		assertFalse(guids.contains(last));
+		assertEquals(before + 1, capacity(guids));
+	}
+
+	@Test
+	public void aContainerKeepsItsTwoListsInStep () throws Exception {
+		final File file = fixture();
+		final DeserializedPackets packets = read(file);
+		final SaveModel save = SaveModel.of(packets);
+		final ItemContainer pack = save.player().get().component("PlayerInventory").get().itemContainer().get();
+		final ItemContainer hers = save.object(COMPANION_GUID).get().component("Inventory").get().itemContainer().get();
+		assertEquals(2, pack.size());
+		assertEquals(0, hers.size());
+		assertEquals(Optional.of(16), hers.maxItems());
+
+		final int pet = pack.indexOf(PET_GUID.toUpperCase());
+		assertTrue(pet >= 0);
+		final ItemContainer.Entry moved = pack.moveTo(hers, pet, save);
+		assertEquals(1, pack.size());
+		assertTrue(pack.paired());
+		assertEquals(0, hers.indexOf(PET_GUID));
+		assertSame(moved.property(), hers.entry(0).property());
+		assertEquals(save.object(COMPANION_GUID).get().name(), save.object(PET_GUID).get().parent());
+
+		moved.setStackSize(3);
+		moved.setSlot(hers.freeSlot(-1, 0));
+		assertEquals(3, hers.entry(0).stackSize());
+		assertEquals(Optional.of(0), hers.entry(0).slot());
+		assertRefused(() -> hers.remove(1), "no item 1");
+
+		final ItemContainer.Entry made = ItemContainer.newEntry(save, "Assets/Data/Prefabs/Items/Foo.prefab", 5, 2);
+		hers.add(made, RING_GUID);
+		assertEquals(Optional.of("Assets/Data/Prefabs/Items/Foo.prefab"), hers.entry(1).baseItem());
+		assertEquals(2, hers.entry(1).stackSize());
+		hers.renumberSlots();
+		assertEquals(Optional.of(1), hers.entry(1).slot());
+		hers.remove(1);
+		assertTrue(hers.paired());
+
+		pack.remove(pack.indexOf(RING_GUID));
+		save.removeUnlisted(Arrays.asList(RING_GUID));
+		packets.replace(file);
+		final SaveModel after = SaveModel.of(read(file));
+		assertEquals(0, after.player().get().component("PlayerInventory").get().itemContainer().get().size());
+		assertEquals(3, after.object(COMPANION_GUID).get().component("Inventory").get()
+			.itemContainer().get().entry(0).stackSize());
+	}
+
+	// An item's object goes only when nothing in the file names it any more.
+	@Test
+	public void anItemsObjectGoesOnlyWhenNoListNamesIt () throws Exception {
+		final SaveModel save = model();
+		final ItemContainer pack = save.player().get().component("PlayerInventory").get().itemContainer().get();
+		assertTrue(save.listedGuids().contains(RING_GUID));
+
+		assertEquals(0, save.removeUnlisted(Arrays.asList(RING_GUID, PET_GUID)));
+		pack.remove(pack.indexOf(RING_GUID.toUpperCase()));
+		assertEquals(1, save.removeUnlisted(Arrays.asList(RING_GUID.toUpperCase(), PET_GUID)));
+		assertFalse(save.object(RING_GUID).isPresent());
+		assertTrue(save.object(PET_GUID).isPresent());
+	}
+
+	@Test
+	public void aMintedObjectIsANewCopyInTheFile () throws Exception {
+		final File file = fixture();
+		final DeserializedPackets packets = read(file);
+		final SaveModel save = SaveModel.of(packets);
+		final SaveObject ring = save.object(RING_GUID).get();
+		final UUID guid = UUID.randomUUID();
+		final int before = packets.getPackets().size();
+
+		final SaveObject minted = save.mint(ring
+			, new SaveModel.Identity("Ring_New(Clone)", guid.toString(), guid, "Assets/Ring_New.prefab"
+				, "Player_Elwyn", null)
+			, (type, component) -> "InstanceID".equals(type) || "Persistence".equals(type)
+			, (type, copy) -> {});
+
+		assertEquals(before + 1, packets.getPackets().size());
+		assertSame(minted.property(), save.object(guid.toString()).get().property());
+		assertEquals("Player_Elwyn", minted.parent());
+		assertEquals(ring.levelName(), minted.levelName());
+		assertEquals(guid, minted.component("InstanceID").get().get("Guid").get());
+		assertNotEquals(guid, ring.component("InstanceID").get().get("Guid").get());
+		assertEquals(2, minted.components().size());
+		assertTrue(minted.property().obj instanceof ObjectPersistencePacket);
+
+		assertRefused(() -> save.mint(ring
+			, new SaveModel.Identity("Again", guid.toString(), guid, "", "", null)
+			, (type, component) -> true, (type, copy) -> {}), guid.toString());
+		assertRefused(() -> save.mint(ring
+			, new SaveModel.Identity("None", "x", UUID.randomUUID(), "", "", null)
+			, (type, component) -> false, (type, copy) -> {}), "no component");
+
+		packets.replace(file);
+		assertTrue(SaveModel.of(read(file)).object(guid.toString()).isPresent());
+	}
+
+	@Test
+	public void aBuiltComponentReadsAsTheGameWritesIt () throws Exception {
+		final SaveModel save = model();
+		final SaveObject player = save.player().get();
+		final UUID summoner = UUID.randomUUID();
+		player.add(ComponentBuilder.of("Built")
+			.integer("Number", 3)
+			.bool("Flag", true)
+			.text("Name", "x")
+			.guid("Who", summoner)
+			.guid("Nobody", null)
+			.constant("Kind", AIController.AISummonType.Summoned, "AIController+AISummonType, Assembly-CSharp")
+			.emptyGuidList("Attached")
+			.build());
+
+		final Component built = player.component("Built").get();
+		assertEquals(3, built.get("Number").get());
+		assertEquals(true, built.get("Flag").get());
+		assertEquals(summoner, built.get("Who").get());
+		assertEquals(AIController.AISummonType.Summoned, built.get("Kind").get());
+		assertEquals(0, built.guidList("Attached").get().size());
+		assertEquals(0, capacity(built.guidList("Attached").get()));
+		built.set("Number", 4);
+		assertEquals(4, built.get("Number").get());
 	}
 
 	private static List<String> types (final SaveObject object) {

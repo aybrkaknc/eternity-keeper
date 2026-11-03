@@ -84,7 +84,17 @@ public final class Component {
 		TypedValue.write((SimpleProperty) found.get(), value, describe() + "'s " + name);
 	}
 
-	private Optional<DictionaryProperty> variables () {
+	/** A list of GUIDs the component holds: its SerializedItemList, its equipment slots. */
+	public Optional<GuidList> guidList (final String name) {
+		return GuidList.of(describe() + "'s " + name, variable(name));
+	}
+
+	/** What the component holds, when it is a container: a pack, the stash, a store. */
+	public Optional<ItemContainer> itemContainer () {
+		return ItemContainer.of(this);
+	}
+
+	Optional<DictionaryProperty> variables () {
 		return Property.find(component, "Variables")
 			.filter(variables -> variables instanceof DictionaryProperty)
 			.map(variables -> (DictionaryProperty) variables);

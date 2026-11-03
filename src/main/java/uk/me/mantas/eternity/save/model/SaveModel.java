@@ -20,14 +20,23 @@ package uk.me.mantas.eternity.save.model;
 
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.WriteRefusedException;
+import uk.me.mantas.eternity.serializer.properties.CollectionProperty;
+import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
 import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -103,6 +112,112 @@ public final class SaveModel {
 
 		throw new WriteRefusedException(
 			"The save does not hold " + object.describe() + " to remove. Nothing was changed.");
+	}
+
+	/**
+	 * Every GUID a list of a component in the file holds, in lower case: an
+	 * item's object goes only when none of them names it any more, or that
+	 * list would be left pointing at nothing (invariant 6).
+	 */
+	public Set<String> listedGuids () {
+		final Set<String> listed = new HashSet<>();
+		for (final SaveObject object : objects()) {
+			for (final Component component : object.components()) {
+				final Optional<DictionaryProperty> variables = component.variables();
+				if (!variables.isPresent()) {
+					continue;
+				}
+
+				for (final Map.Entry<Property, Property> variable : variables.get().items) {
+					if (variable == null || !(variable.getValue() instanceof CollectionProperty)) {
+						continue;
+					}
+
+					for (final Property item : ((CollectionProperty) variable.getValue()).items) {
+						if (item instanceof SimpleProperty && ((SimpleProperty) item).value != null) {
+							listed.add(((SimpleProperty) item).value.toString().toLowerCase(Locale.ROOT));
+						}
+					}
+				}
+			}
+		}
+
+		return listed;
+	}
+
+	/**
+	 * Takes out the objects of {@code ids} that no list in the file names any
+	 * more ({@link #listedGuids}).
+	 *
+	 * @return how many went
+	 */
+	public int removeUnlisted (final Collection<String> ids) {
+		final Set<String> gone = new HashSet<>();
+		for (final String id : ids) {
+			gone.add(id.toLowerCase(Locale.ROOT));
+		}
+
+		gone.removeAll(listedGuids());
+		final int before = packets.get().size();
+		packets.get().removeIf(packet -> SaveObject.of(packet)
+			.map(object -> object.id() != null && gone.contains(object.id().toLowerCase(Locale.ROOT)))
+			.orElse(false));
+
+		return before - packets.get().size();
+	}
+
+	/** The header fields a new object has of its own. */
+	public static final class Identity {
+		final String objectName;
+		final String objectID;
+		final UUID guid;
+		final String prefabResource;
+		final String parent;
+		final String levelName;
+
+		/** @param levelName null keeps the template's */
+		public Identity (
+			final String objectName, final String objectID, final UUID guid
+			, final String prefabResource, final String parent, final String levelName) {
+
+			this.objectName = objectName;
+			this.objectID = objectID;
+			this.guid = guid;
+			this.prefabResource = prefabResource;
+			this.parent = parent;
+			this.levelName = levelName;
+		}
+	}
+
+	/** Which of the template's components the new object carries. */
+	@FunctionalInterface
+	public interface Keep {
+		boolean test (String typeString, ComplexProperty component);
+	}
+
+	/**
+	 * A new object made out of the shape of {@code template} (invariant 7),
+	 * put in the file after the ones it holds. A new item and a new ability
+	 * are both made this way.
+	 *
+	 * @param adjust given each copied component with its TypeString, once its
+	 *               InstanceID GUID is written
+	 * @throws WriteRefusedException when the template has no component worth
+	 *         copying, or the file already holds an object with the new ID;
+	 *         nothing is changed
+	 */
+	public SaveObject mint (
+		final SaveObject template
+		, final Identity identity
+		, final Keep keep
+		, final BiConsumer<String, ComplexProperty> adjust) throws WriteRefusedException {
+
+		final SaveObject minted = SaveObject.of(Mint.build(template, identity, keep, adjust))
+			.orElseThrow(() -> new WriteRefusedException(template.describe()
+				+ " is not an object a new one can be made from. Nothing was changed."));
+
+		add(minted);
+		return minted;
 	}
 
 	/** The main character: the one {@code Player_} object a save has. */
