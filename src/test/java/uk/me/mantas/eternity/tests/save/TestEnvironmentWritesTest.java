@@ -31,15 +31,23 @@ import uk.me.mantas.eternity.factory.PacketDeserializerFactory;
 import uk.me.mantas.eternity.factory.SharpSerializerFactory;
 import uk.me.mantas.eternity.game.ComponentPersistencePacket;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
+import uk.me.mantas.eternity.game.GenericAbility.AbilityType;
+import uk.me.mantas.eternity.save.AbilityManager;
+import uk.me.mantas.eternity.save.AchievementsEnabler;
 import uk.me.mantas.eternity.save.ChangesSaver;
 import uk.me.mantas.eternity.save.CharacterExporter;
 import uk.me.mantas.eternity.save.CharacterImporter;
+import uk.me.mantas.eternity.save.InventoryManager;
+import uk.me.mantas.eternity.save.Loadout;
 import uk.me.mantas.eternity.save.PartyManager;
 import uk.me.mantas.eternity.save.QuestRestorer;
 import uk.me.mantas.eternity.save.StrongholdCatalog;
 import uk.me.mantas.eternity.save.StrongholdManager;
 import uk.me.mantas.eternity.save.StrongholdManager.Change;
+import uk.me.mantas.eternity.save.VendorManager;
+import uk.me.mantas.eternity.save.VendorStock;
 import uk.me.mantas.eternity.save.model.SaveObject;
+import uk.me.mantas.eternity.serializer.CSharpCollection;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.properties.CollectionProperty;
@@ -63,6 +71,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -154,6 +163,7 @@ public class TestEnvironmentWritesTest extends TestHarness {
 			final DeserializedPackets original = read(new File(whole, "MobileObjects.save"));
 			final String player = findPlayer(original);
 			final String companion = findPartyCompanion(original);
+			final List<String> carried = carriedBy(original, player, "PlayerInventory");
 			checkObjects(save, whole);
 			FileUtils.deleteQuietly(whole.getParentFile());
 
@@ -184,6 +194,99 @@ public class TestEnvironmentWritesTest extends TestHarness {
 					, "data/quests/companions/companion_qst_durance.quest"));
 				packets.replace(file);
 				return dir;
+			});
+
+			run(results, save, "achievements", archive, true, dir -> {
+				outcome("enable", new AchievementsEnabler(dir).enable());
+				return dir;
+			});
+
+			run(results, save, "abilities", archive, true, dir -> {
+				final List<AbilityManager.Change> changes = new ArrayList<>();
+				changes.add(AbilityManager.Change.addAbility(player, new AbilityManager.NewAbility(
+					"Fireball", "Assets/Data/Prefabs/RPG/Spells/Wizard/L_03/Fireball.prefab"
+					, "GenericSpell", AbilityType.Spell.ordinal(), true, "Wizard")));
+				if (companion != null) {
+					changes.add(AbilityManager.Change.addAbility(companion, new AbilityManager.NewAbility(
+						"Cautious_Attack", "Assets/Data/Prefabs/RPG/Talents/Talent_Abilities/Cautious_Attack.prefab"
+						, "GenericAbility", AbilityType.Talent.ordinal())));
+				}
+
+				outcome("abilities", new AbilityManager(dir).apply(changes));
+				return dir;
+			});
+
+			run(results, save, "inventory", archive, true, dir -> {
+				if (carried.size() < 2) {
+					return null;
+				}
+
+				final InventoryManager manager = new InventoryManager(dir);
+				outcome("inventory", manager.apply(Arrays.asList(
+					new InventoryManager.Change(player, "PlayerInventory", carried.get(0), 1, player, "StashInventory", -1)
+					, companion == null
+						? new InventoryManager.Change(player, "PlayerInventory", carried.get(1), 0)
+						: new InventoryManager.Change(player, "PlayerInventory", carried.get(1), 1, companion, "Inventory", -1))));
+				outcomes += manager.problem().orElse("");
+				return dir;
+			});
+
+			run(results, save, "newItem", archive, true, dir -> {
+				final InventoryManager.Change beer = new InventoryManager.Change(
+					player, "StashInventory", "11112222-3333-4444-5555-666677778888", 3, player, "StashInventory", -1);
+				beer.newItemPrefab = "Food_Beer";
+				beer.newItemPath = "assets/data/prefabs/items/consumables/food/food_beer.prefab";
+				final InventoryManager manager = new InventoryManager(dir);
+				outcome("newItem", manager.apply(Collections.singletonList(beer)));
+				outcomes += manager.problem().orElse("");
+				return dir;
+			});
+
+			run(results, save, "loadout", archive, true, dir -> {
+				if (companion == null) {
+					return null;
+				}
+
+				final File file = new File(dir.getParentFile(), "gear.loadout");
+				final int items = Loadout.save(dir, player, file);
+				outcomes += "items=" + items + " ";
+				if (items > 0) {
+					outcomes += Loadout.read(file).putOn(dir, companion).orElse("put on") + " ";
+				}
+
+				return dir;
+			});
+
+			run(results, save, "loadoutFile", archive, true, dir -> {
+				final File file = new File(dir.getParentFile(), "gear.loadout");
+				return Loadout.save(dir, player, file) > 0 ? file : null;
+			});
+
+			run(results, save, "export", archive, true, dir -> {
+				final File chr = new File(dir.getParentFile(), "subject.chr");
+				outcome("export", new CharacterExporter(dir.getAbsolutePath(), player, chr.getAbsolutePath()).export());
+				return chr;
+			});
+
+			// The vendor with the most stock: its first and last entries sold.
+			run(results, save, "vendor", archive, false, dir -> {
+				final Optional<VendorStock.Vendor> vendor = VendorStock.read(dir).vendors.stream()
+					.filter(v -> v.items.size() >= 2)
+					.max(java.util.Comparator.comparingInt((VendorStock.Vendor v) -> v.items.size())
+						.thenComparing(v -> v.id));
+				if (!vendor.isPresent()) {
+					return null;
+				}
+
+				final VendorStock.Item first = vendor.get().items.get(0);
+				final VendorStock.Item last = vendor.get().items.get(vendor.get().items.size() - 1);
+				final VendorManager manager = new VendorManager(dir);
+				outcome("vendor", manager.apply(Collections.singletonList(new VendorManager.Removal(
+					vendor.get().file, vendor.get().id, Arrays.asList(
+						new VendorManager.Entry(first.index, first.guid)
+						, new VendorManager.Entry(last.index, last.guid))))));
+				outcomes += manager.problem().orElse("");
+				return new File(dir, vendor.get().file);
 			});
 
 			run(results, save, "importPlayer", archive, false, dir -> overwrite(dir, player));
@@ -265,10 +368,16 @@ public class TestEnvironmentWritesTest extends TestHarness {
 		outcomes = "";
 		String result;
 		try {
+			// A save folder, whose world state is fingerprinted, or a packet
+			// file of its own.
 			final File written = body.run(dir);
+			if (written != null && written.isFile()) {
+				known.addAll(ids(read(written)));
+			}
+
 			result = written == null
 				? "skipped"
-				: outcomes + fingerprint(read(new File(written, "MobileObjects.save")), known);
+				: outcomes + fingerprint(read(written.isFile() ? written : new File(written, "MobileObjects.save")), known);
 		} catch (final Exception e) {
 			result = outcomes + "threw " + e.getClass().getSimpleName() + ": " + e.getMessage();
 		}
@@ -377,6 +486,37 @@ public class TestEnvironmentWritesTest extends TestHarness {
 		return null;
 	}
 
+	/** The item GUIDs a character's container lists, read through the mirror. */
+	private static List<String> carriedBy (
+		final DeserializedPackets packets, final String character, final String container) {
+
+		final List<String> guids = new ArrayList<>();
+		for (final Property property : packets.getPackets()) {
+			if (!(property.obj instanceof ObjectPersistencePacket)) {
+				continue;
+			}
+
+			final ObjectPersistencePacket packet = (ObjectPersistencePacket) property.obj;
+			if (character == null || !character.equalsIgnoreCase(packet.ObjectID) || packet.ComponentPackets == null) {
+				continue;
+			}
+
+			for (final ComponentPersistencePacket component : packet.ComponentPackets) {
+				if (container.equals(component.TypeString)
+					&& component.Variables.get("SerializedItemList") instanceof CSharpCollection) {
+
+					final java.util.Iterator listed =
+						((CSharpCollection) component.Variables.get("SerializedItemList")).iterator();
+					while (listed.hasNext()) {
+						guids.add(String.valueOf(listed.next()));
+					}
+				}
+			}
+		}
+
+		return guids;
+	}
+
 	private static String findPartyCompanion (final DeserializedPackets packets) {
 		for (final Property property : packets.getPackets()) {
 			if (!(property.obj instanceof ObjectPersistencePacket)) {
@@ -407,7 +547,7 @@ public class TestEnvironmentWritesTest extends TestHarness {
 		void take (String chunk) throws Exception;
 	}
 
-	private static Set<String> ids (final DeserializedPackets packets) throws Exception {
+	static Set<String> ids (final DeserializedPackets packets) throws Exception {
 		final Set<String> ids = new HashSet<>();
 		dump(packets, chunk -> {
 			final Matcher found = GUID.matcher(chunk);
@@ -419,7 +559,7 @@ public class TestEnvironmentWritesTest extends TestHarness {
 		return ids;
 	}
 
-	private static String fingerprint (final DeserializedPackets packets, final Set<String> known)
+	static String fingerprint (final DeserializedPackets packets, final Set<String> known)
 		throws Exception {
 
 		final Map<String, String> fresh = new LinkedHashMap<>();

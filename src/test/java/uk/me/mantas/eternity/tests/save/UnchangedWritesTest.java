@@ -28,15 +28,23 @@ import uk.me.mantas.eternity.Settings;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.factory.PacketDeserializerFactory;
 import uk.me.mantas.eternity.factory.SharpSerializerFactory;
+import uk.me.mantas.eternity.game.GenericAbility.AbilityType;
+import uk.me.mantas.eternity.save.AbilityManager;
+import uk.me.mantas.eternity.save.AchievementsEnabler;
 import uk.me.mantas.eternity.save.ChangesSaver;
 import uk.me.mantas.eternity.save.CharacterExporter;
 import uk.me.mantas.eternity.save.CharacterImporter;
+import uk.me.mantas.eternity.save.GrimoireManager;
+import uk.me.mantas.eternity.save.InventoryManager;
+import uk.me.mantas.eternity.save.ItemCatalog;
+import uk.me.mantas.eternity.save.Loadout;
 import uk.me.mantas.eternity.save.PartyManager;
 import uk.me.mantas.eternity.save.QuestRestorer;
 import uk.me.mantas.eternity.save.QuestTrackerBlob;
 import uk.me.mantas.eternity.save.StrongholdCatalog;
 import uk.me.mantas.eternity.save.StrongholdManager;
 import uk.me.mantas.eternity.save.StrongholdManager.Change;
+import uk.me.mantas.eternity.save.VendorManager;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.properties.CollectionProperty;
@@ -60,6 +68,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -300,6 +309,156 @@ public class UnchangedWritesTest extends TestHarness {
 		throw new AssertionError("no InGameGlobal in the fixture");
 	}
 
+	// -------------------- slice 2: the item and ability writers --------------------
+
+	private static final String RING_GUID = "c4b7033d-c452-4946-a9ba-9998cb411201";
+	private static final String PET_GUID = "41baf584-9203-44df-a921-62f50000ad74";
+	private static final String KNOCKDOWN_GUID = "3ffdbced-4efb-4a6a-afcc-686fed65381b";
+	private static final String GRIMOIRE_GUID = "11111111-2222-3333-4444-555555555555";
+
+	@Test
+	public void achievementsEnabled () throws Exception {
+		final File saveDir = saveFrom("MobileObjects.save");
+		final Set<String> known = inputs(saveDir);
+		assertTrue(new AchievementsEnabler(saveDir).enable());
+		check("achievementsEnabled", saveDir, known);
+	}
+
+	@Test
+	public void grimoireRewritten () throws Exception {
+		final File saveDir = saveFrom("GrimoireManagerTest/MobileObjects.save");
+		final Set<String> known = inputs(saveDir);
+		assertTrue(new GrimoireManager(saveDir).apply(Collections.singletonList(
+			new GrimoireManager.Change(GRIMOIRE_GUID, Arrays.asList(
+				new GrimoireManager.Spell("Fireball", 3)
+				, new GrimoireManager.Spell("Chill_Fog", 1)
+				, new GrimoireManager.Spell("Slicken", 1))))));
+		check("grimoireRewritten", saveDir, known);
+	}
+
+	@Test
+	public void abilitiesAddedAndRemoved () throws Exception {
+		final File saveDir = saveFrom("MobileObjects.save");
+		final Set<String> known = inputs(saveDir);
+		assertTrue(new AbilityManager(saveDir).apply(Arrays.asList(
+			AbilityManager.Change.removeAbility(PLAYER_GUID, KNOCKDOWN_GUID)
+			, AbilityManager.Change.addAbility(PLAYER_GUID, new AbilityManager.NewAbility(
+				"Fireball"
+				, "Assets/Data/Prefabs/RPG/Spells/Wizard/L_03/Fireball.prefab"
+				, "GenericSpell"
+				, AbilityType.Spell.ordinal()
+				, true
+				, "Wizard"))
+			, AbilityManager.Change.addAbility(COMPANION_GUID, new AbilityManager.NewAbility(
+				"Cautious_Attack"
+				, "Assets/Data/Prefabs/RPG/Talents/Talent_Abilities/Cautious_Attack.prefab"
+				, "GenericAbility"
+				, AbilityType.Talent.ordinal())))));
+		check("abilitiesAddedAndRemoved", saveDir, known);
+	}
+
+	// An area file's tree is deeper than a test thread's stack can walk.
+	@Test
+	public void vendorSale () throws Throwable {
+		final Throwable[] failed = new Throwable[1];
+		final Thread thread = new Thread(null, () -> {
+			try {
+				sellFromVendors();
+			} catch (final Throwable e) {
+				failed[0] = e;
+			}
+		}, "vendorSale", 1L << 28);
+		thread.start();
+		thread.join();
+		if (failed[0] != null) {
+			throw failed[0];
+		}
+	}
+
+	private void sellFromVendors () throws Exception {
+		final File saveDir = VendorStockTest.setupSave(getClass());
+		final File world = new File(saveDir, VendorStockTest.WORLD);
+		final File hall = new File(saveDir, VendorStockTest.ARTIFICER_HALL);
+		final Set<String> known = TestEnvironmentWritesTest.ids(read(world));
+		final Set<String> knownInHall = TestEnvironmentWritesTest.ids(read(hall));
+
+		assertTrue(new VendorManager(saveDir).apply(Arrays.asList(
+			new VendorManager.Removal(VendorStockTest.WORLD, VendorStockTest.HEODAN, Arrays.asList(
+				new VendorManager.Entry(0, VendorStockTest.HEODAN_SHIELD)
+				, new VendorManager.Entry(1, VendorStockTest.HEODAN_LOCKPICKS)))
+			, new VendorManager.Removal(VendorStockTest.ARTIFICER_HALL, VendorStockTest.STORE_ARTIFICER
+				, Collections.singletonList(new VendorManager.Entry(0, VendorStockTest.TRAP_ARROW))))));
+		checkFingerprint("vendorSaleWorld", TestEnvironmentWritesTest.fingerprint(read(world), known));
+		checkFingerprint("vendorSaleArea", TestEnvironmentWritesTest.fingerprint(read(hall), knownInHall));
+	}
+
+	@Test
+	public void inventoryRemovesRestacksAndMoves () throws Exception {
+		final File saveDir = saveFrom("MobileObjects.save");
+		final Set<String> known = inputs(saveDir);
+		inventory(saveDir
+			, new InventoryManager.Change(PLAYER_GUID, "PlayerInventory", PET_GUID, 5)
+			, new InventoryManager.Change(PLAYER_GUID, "PlayerInventory", PET_GUID, 1, PLAYER_GUID, "PlayerInventory", 7)
+			, new InventoryManager.Change(PLAYER_GUID, "PlayerInventory", RING_GUID, 1, COMPANION_GUID, "Inventory", -1));
+		check("inventoryRestacksAndMoves", saveDir, known);
+
+		inventory(saveDir
+			, new InventoryManager.Change(COMPANION_GUID, "Inventory", RING_GUID, 1, PLAYER_GUID, "StashInventory", -1)
+			, new InventoryManager.Change(PLAYER_GUID, "PlayerInventory", PET_GUID, 0));
+		check("inventoryRemoves", saveDir, known);
+	}
+
+	@Test
+	public void inventoryEquipsUnequipsAndAdds () throws Exception {
+		final File saveDir = saveFrom("MobileObjects.save");
+		final Set<String> known = inputs(saveDir);
+		inventory(saveDir, InventoryManager.Change.equip(PLAYER_GUID, "PlayerInventory", RING_GUID, PLAYER_GUID, 4));
+		check("inventoryEquips", saveDir, known);
+
+		inventory(saveDir, InventoryManager.Change.unequip(PLAYER_GUID, 4, RING_GUID, COMPANION_GUID, "Inventory", 5));
+		check("inventoryUnequipsToAnother", saveDir, known);
+
+		final InventoryManager.Change beer = new InventoryManager.Change(
+			PLAYER_GUID, "PlayerInventory", "11112222-3333-4444-5555-666677778888", 3, PLAYER_GUID, "PlayerInventory", 6);
+		beer.newItemPrefab = "Food_Beer";
+		beer.newItemPath = "assets/data/prefabs/items/consumables/food/food_beer.prefab";
+		inventory(saveDir, beer);
+		check("inventoryAddsNew", saveDir, known);
+	}
+
+	private static void inventory (final File saveDir, final InventoryManager.Change... changes) throws IOException {
+		final InventoryManager manager = new InventoryManager(saveDir);
+		assertTrue(manager.problem().orElse("refused"), manager.apply(Arrays.asList(changes)));
+	}
+
+	@Test
+	public void loadoutSavedAndPutOnAnother () throws Exception {
+		final File saveDir = saveFrom("InventoryManagerTest/MobileObjects.save");
+		final Set<String> known = inputs(saveDir);
+		inventory(saveDir, InventoryManager.Change.equip(PLAYER_GUID, "PlayerInventory", RING_GUID, PLAYER_GUID, 4));
+
+		final File file = new File(EKUtils.createTempDir(PREFIX).get(), "gear.loadout");
+		assertTrue(Loadout.save(saveDir, PLAYER_GUID, file) > 0);
+		checkFile("loadoutSaved", file, known);
+
+		try {
+			assertEquals(Optional.empty(), Loadout.read(file).putOn(saveDir, COMPANION_GUID));
+		} finally {
+			ItemCatalog.useNoCatalog();
+		}
+
+		check("loadoutPutOnAnother", saveDir, known);
+	}
+
+	@Test
+	public void characterExported () throws Exception {
+		final File saveDir = saveFrom("MobileObjects.save");
+		final Set<String> known = inputs(saveDir);
+		final File chr = new File(saveDir.getParentFile(), "subject.chr");
+		assertTrue(new CharacterExporter(saveDir.getAbsolutePath(), PLAYER_GUID, chr.getAbsolutePath()).export());
+		checkFile("characterExported", chr, known);
+	}
+
 	// -------------------- fingerprints --------------------
 
 	private Set<String> inputs (final File saveDir) throws IOException {
@@ -325,7 +484,19 @@ public class UnchangedWritesTest extends TestHarness {
 	private void check (final String scenario, final File saveDir, final Set<String> known)
 		throws Exception {
 
-		final String fingerprint = fingerprint(read(new File(saveDir, "MobileObjects.save")), known);
+		checkFile(scenario, new File(saveDir, "MobileObjects.save"), known);
+	}
+
+	private void checkFile (final String scenario, final File file, final Set<String> known)
+		throws Exception {
+
+		checkFingerprint(scenario, fingerprint(read(file), known));
+	}
+
+	// The store fixtures share parts of their trees, which the plain dump
+	// would write out once for every place that names them: those are
+	// fingerprinted the way TestEnvironmentWritesTest does real saves.
+	private void checkFingerprint (final String scenario, final String fingerprint) throws Exception {
 		final File recordedSource = new File("src/test/resources/" + RECORDED);
 
 		if (Boolean.getBoolean("ek.recordWrites")) {
