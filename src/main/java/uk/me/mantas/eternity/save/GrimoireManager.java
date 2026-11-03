@@ -21,15 +21,13 @@ package uk.me.mantas.eternity.save;
 
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.environment.Environment;
-import uk.me.mantas.eternity.game.ObjectPersistencePacket;
+import uk.me.mantas.eternity.save.model.Component;
+import uk.me.mantas.eternity.save.model.SaveModel;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.TypePair;
 import uk.me.mantas.eternity.serializer.properties.CollectionProperty;
-import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
-import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
-import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 
 import java.io.File;
 import java.io.IOException;
@@ -39,8 +37,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-
-import static uk.me.mantas.eternity.EKUtils.findSubComponent;
 
 /**
  * Which spells sit in which grimoire.
@@ -178,17 +174,19 @@ public class GrimoireManager {
 			return false;
 		}
 
+		final SaveModel save = SaveModel.of(deserialized.get());
 		boolean changed = false;
 		for (final Change change : changes) {
-			final Optional<DictionaryProperty> variables =
-				findGrimoire(deserialized.get(), change.grimoire);
+			final Optional<Component> grimoire = change.grimoire == null || change.grimoire.isEmpty()
+				? Optional.empty()
+				: save.object(change.grimoire).flatMap(item -> item.component(GRIMOIRE));
 
-			if (!variables.isPresent()) {
+			if (!grimoire.isPresent()) {
 				logger.error("No grimoire with ObjectID '%s'.%n", change.grimoire);
 				return false;
 			}
 
-			changed |= rewrite(variables.get(), plan(change.spells));
+			changed |= rewrite(grimoire.get(), plan(change.spells));
 		}
 
 		if (!changed) {
@@ -204,10 +202,8 @@ public class GrimoireManager {
 	 * entries are plain strings, so there is nothing to keep in sync — no
 	 * parallel UUID list, no standalone packet per spell.
 	 */
-	private boolean rewrite (
-		final DictionaryProperty variables, final List<Spell> spells) {
-
-		final Optional<Property> entry = variables.findEntry(SPELL_NAMES);
+	private boolean rewrite (final Component grimoire, final List<Spell> spells) {
+		final Optional<Property> entry = grimoire.variable(SPELL_NAMES);
 		if (!entry.isPresent() || !(entry.get() instanceof CollectionProperty)) {
 			logger.error("Grimoire has no %s list.%n", SPELL_NAMES);
 			return false;
@@ -239,47 +235,6 @@ public class GrimoireManager {
 		}
 
 		return true;
-	}
-
-	/** The Variables of the Grimoire component on the packet with this id. */
-	private static Optional<DictionaryProperty> findGrimoire (
-		final DeserializedPackets packets, final String objectID) {
-
-		if (objectID == null || objectID.isEmpty()) {
-			return Optional.empty();
-		}
-
-		for (final Property property : packets.getPackets()) {
-			if (!(property.obj instanceof ObjectPersistencePacket)
-				|| !(property instanceof ComplexProperty)) {
-
-				continue;
-			}
-
-			final ObjectPersistencePacket packet =
-				(ObjectPersistencePacket) property.obj;
-
-			if (!objectID.equalsIgnoreCase(packet.ObjectID)) {
-				continue;
-			}
-
-			final Optional<Property> components =
-				((ComplexProperty) property).findProperty("ComponentPackets");
-
-			if (!components.isPresent()
-				|| !(components.get() instanceof SingleDimensionalArrayProperty)) {
-
-				continue;
-			}
-
-			return findSubComponent(
-				(SingleDimensionalArrayProperty) components.get(), GRIMOIRE)
-				.flatMap(component -> component.findProperty("Variables"))
-				.filter(DictionaryProperty.class::isInstance)
-				.map(DictionaryProperty.class::cast);
-		}
-
-		return Optional.empty();
 	}
 
 	private Optional<DeserializedPackets> read () throws IOException {

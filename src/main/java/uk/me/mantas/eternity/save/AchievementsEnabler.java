@@ -19,19 +19,15 @@
 
 package uk.me.mantas.eternity.save;
 
-import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
-import uk.me.mantas.eternity.game.ObjectPersistencePacket;
+import uk.me.mantas.eternity.save.model.Component;
+import uk.me.mantas.eternity.save.model.SaveModel;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
-import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
-import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
-import uk.me.mantas.eternity.serializer.properties.Property;
-import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.List;
 import java.util.Optional;
 
 /**
@@ -62,6 +58,8 @@ public class AchievementsEnabler {
 	 *                            achievements unlock again; false sets it.
 	 *                            GameState.CheatsEnabled is deliberately left
 	 *                            alone either way.
+	 * @throws WriteRefusedException when the save holds the flag as anything
+	 *         but a boolean; nothing is written
 	 */
 	public boolean set (final boolean achievementsEnabled) throws IOException {
 		final File mobileObjects = new File(saveDirectory, "MobileObjects.save");
@@ -74,40 +72,20 @@ public class AchievementsEnabler {
 		}
 
 		final DeserializedPackets deserialized = deserializedOpt.get();
-		final boolean achievementsSet = setBoolean(
-			deserialized.getPackets(), "AchievementTracker", "m_disableAchievements",
-			!achievementsEnabled);
+		final Optional<Component> tracker = SaveModel.of(deserialized).objects().stream()
+			.map(object -> object.component("AchievementTracker"))
+			.filter(Optional::isPresent)
+			.map(Optional::get)
+			.filter(component -> component.variable("m_disableAchievements").isPresent())
+			.findFirst();
 
-		if (!achievementsSet) {
+		if (!tracker.isPresent()) {
 			logger.error("Could not find AchievementTracker.m_disableAchievements.%n");
 			return false;
 		}
 
+		tracker.get().set("m_disableAchievements", !achievementsEnabled);
 		deserialized.replace(mobileObjects);
 		return true;
-	}
-
-	private boolean setBoolean (
-		final List<Property> packets
-		, final String component
-		, final String variable
-		, final boolean value) {
-
-		for (final Property p : packets) {
-			if (!(p.obj instanceof ObjectPersistencePacket)) continue;
-			if (!(p instanceof ComplexProperty)) continue;
-
-			final Optional<Property> flag = ((ComplexProperty) p)
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(c -> EKUtils.findSubComponent(c, component))
-				.flatMap(g -> g.<DictionaryProperty>findProperty("Variables"))
-				.flatMap(v -> v.findEntry(variable));
-
-			if (flag.isPresent()) {
-				return Property.update(flag.get(), value);
-			}
-		}
-
-		return false;
 	}
 }

@@ -19,24 +19,28 @@
 
 package uk.me.mantas.eternity.save;
 
-import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.game.GenericAbility.AbilityType;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
+import uk.me.mantas.eternity.save.model.Component;
+import uk.me.mantas.eternity.save.model.SaveModel;
+import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.TypePair;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
 import uk.me.mantas.eternity.serializer.properties.*;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.AbstractMap;
-import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -201,10 +205,11 @@ public class AbilityManager {
 		}
 
 		final DeserializedPackets deserialized = deserializedOpt.get();
-		final List<Property> packets = new ArrayList<>(deserialized.getPackets());
+		final SaveModel save = SaveModel.of(deserialized);
+		final Set<ComplexProperty> minted = Collections.newSetFromMap(new IdentityHashMap<>());
 
 		for (final Change change : changes) {
-			final Optional<Property> owner = EKUtils.findPacketById(packets, change.character);
+			final Optional<SaveObject> owner = save.object(change.character);
 			if (!owner.isPresent()) {
 				logger.error("No character '%s' in this save.%n", change.character);
 				return false;
@@ -212,28 +217,28 @@ public class AbilityManager {
 
 			switch (change.kind) {
 				case REMOVE_ABILITY:
-					if (!removeAbility(packets, owner.get(), change.abilityGuid)) {
+					if (!removeAbility(save, owner.get(), change.abilityGuid)) {
 						return false;
 					}
 
 					break;
 
 				case ADD_ABILITY:
-					if (!addAbilities(packets, owner.get(), change.abilities)) {
+					if (!addAbilities(save, owner.get(), change.abilities, minted)) {
 						return false;
 					}
 
 					break;
 
 				case ADD_TALENT:
-					if (!addTalent(packets, owner.get(), change)) {
+					if (!addTalent(save, owner.get(), change, minted)) {
 						return false;
 					}
 
 					break;
 
 				case REMOVE_TALENT:
-					if (!removeTalent(packets, owner.get(), change)) {
+					if (!removeTalent(save, owner.get(), change)) {
 						return false;
 					}
 
@@ -245,7 +250,6 @@ public class AbilityManager {
 			}
 		}
 
-		deserialized.setPackets(packets);
 		deserialized.replace(mobileObjects);
 		return true;
 	}
@@ -256,43 +260,32 @@ public class AbilityManager {
 	 * copies of the same spell.
 	 */
 	private boolean removeAbility (
-		final List<Property> packets, final Property owner, final String abilityGuid) {
+		final SaveModel save, final SaveObject owner, final String abilityGuid)
+		throws WriteRefusedException {
 
-		final String ownerName = ((ObjectPersistencePacket) owner.obj).ObjectName;
-
-		for (int i = 0; i < packets.size(); i++) {
-			final Property property = packets.get(i);
-			if (!(property.obj instanceof ObjectPersistencePacket)) {
-				continue;
-			}
-
-			final ObjectPersistencePacket packet = (ObjectPersistencePacket) property.obj;
-			if (!abilityGuid.equalsIgnoreCase(packet.ObjectID)) {
-				continue;
-			}
-
-			// Refuse to reach into someone else's abilities; the UI addresses
-			// them per character and a mismatch means the two have drifted.
-			if (ownerName == null || !ownerName.equals(packet.Parent)) {
-				logger.error(
-					"Ability '%s' is not owned by '%s'.%n", abilityGuid, ownerName);
-
-				return false;
-			}
-
-			packets.remove(i);
-			return true;
+		final Optional<SaveObject> ability = save.object(abilityGuid);
+		if (!ability.isPresent()) {
+			logger.error("No ability object '%s' in this save.%n", abilityGuid);
+			return false;
 		}
 
-		logger.error("No ability object '%s' in this save.%n", abilityGuid);
-		return false;
+		// Refuse to reach into someone else's abilities; the UI addresses
+		// them per character and a mismatch means the two have drifted.
+		if (owner.name() == null || !owner.name().equals(ability.get().parent())) {
+			logger.error("Ability '%s' is not owned by '%s'.%n", abilityGuid, owner.name());
+			return false;
+		}
+
+		save.remove(ability.get());
+		return true;
 	}
 
 	private boolean addAbilities (
-		final List<Property> packets, final Property owner, final List<NewAbility> abilities) {
+		final SaveModel save, final SaveObject owner, final List<NewAbility> abilities
+		, final Set<ComplexProperty> minted) throws WriteRefusedException {
 
 		for (final NewAbility ability : abilities) {
-			if (!addAbility(packets, owner, ability)) {
+			if (!addAbility(save, owner, ability, minted)) {
 				return false;
 			}
 		}
@@ -301,28 +294,42 @@ public class AbilityManager {
 	}
 
 	private boolean addAbility (
-		final List<Property> packets, final Property owner, final NewAbility ability) {
+		final SaveModel save, final SaveObject owner, final NewAbility ability
+		, final Set<ComplexProperty> minted) throws WriteRefusedException {
 
-		final Optional<Property> template = findAbilityTemplate(packets, ability.component);
+		final Optional<SaveObject> template = findAbilityTemplate(save, ability.component, minted);
 		if (!template.isPresent()) {
 			logger.error("This save has no ability object to model a new one on.%n");
 			return false;
 		}
 
-		final ObjectPersistencePacket character = (ObjectPersistencePacket) owner.obj;
-		final Optional<Property> packet = buildAbilityPacket(
-			template.get(), UUID.randomUUID(), ability, character);
+		final UUID guid = UUID.randomUUID();
+		final boolean[] wroteAbility = {false};
+		final SaveObject made = save.mint(template.get()
+			, new SaveModel.Identity(ability.prefab + "(Clone)", guid.toString(), guid
+				, ability.path, owner.name(), owner.levelName())
+			, (type, component) -> "InstanceID".equals(type) || "Persistence".equals(type)
+				|| isAbility(component)
+			, (type, copy) -> {
+				if (!"InstanceID".equals(type) && isAbility(copy)) {
+					stampNewAbility(copy, ability, owner);
+					wroteAbility[0] = true;
+				}
+			});
 
-		if (!packet.isPresent()) {
+		minted.add(made.property());
+		if (!wroteAbility[0]) {
+			save.remove(made);
+			logger.error("Template ability object had no ability component to copy.%n");
 			return false;
 		}
 
-		packets.add(packet.get());
 		return true;
 	}
 
 	private boolean addTalent (
-		final List<Property> packets, final Property owner, final Change change) {
+		final SaveModel save, final SaveObject owner, final Change change
+		, final Set<ComplexProperty> minted) throws WriteRefusedException {
 
 		final Optional<CollectionProperty> talents = findTalentList(owner);
 		if (!talents.isPresent()) {
@@ -344,12 +351,13 @@ public class AbilityManager {
 		entry.obj = change.talent;
 		talents.get().items.add(entry);
 
-		return addAbilities(packets, owner, change.abilities)
+		return addAbilities(save, owner, change.abilities, minted)
 			&& adjustSkillBonuses(owner, change.skills, 1);
 	}
 
 	private boolean removeTalent (
-		final List<Property> packets, final Property owner, final Change change) {
+		final SaveModel save, final SaveObject owner, final Change change)
+		throws WriteRefusedException {
 
 		final Optional<CollectionProperty> talents = findTalentList(owner);
 		if (!talents.isPresent()) {
@@ -365,9 +373,8 @@ public class AbilityManager {
 
 		talents.get().items.remove(index);
 
-		final String ownerName = ((ObjectPersistencePacket) owner.obj).ObjectName;
 		for (final String prefab : change.granted) {
-			removeOwnedAbilityNamed(packets, ownerName, prefab);
+			removeOwnedAbilityNamed(save, owner.name(), prefab);
 		}
 
 		return adjustSkillBonuses(owner, change.skills, -1);
@@ -379,25 +386,20 @@ public class AbilityManager {
 	 * game, simply leaves nothing to remove.
 	 */
 	private void removeOwnedAbilityNamed (
-		final List<Property> packets, final String ownerName, final String prefab) {
+		final SaveModel save, final String ownerName, final String prefab)
+		throws WriteRefusedException {
 
 		// Matched without regard to case: the game writes Cautious_Attack(Clone)
 		// while an object minted from a catalog path can be lowercased, and both
 		// name the same prefab as far as the game is concerned.
 		final String objectName = prefab + "(Clone)";
-		for (int i = 0; i < packets.size(); i++) {
-			final Property property = packets.get(i);
-			if (!(property.obj instanceof ObjectPersistencePacket)) {
-				continue;
-			}
+		final Optional<SaveObject> granted = save.objects().stream()
+			.filter(object -> objectName.equalsIgnoreCase(object.name())
+				&& ownerName != null && ownerName.equals(object.parent()))
+			.findFirst();
 
-			final ObjectPersistencePacket packet = (ObjectPersistencePacket) property.obj;
-			if (objectName.equalsIgnoreCase(packet.ObjectName) && ownerName != null
-				&& ownerName.equals(packet.Parent)) {
-
-				packets.remove(i);
-				return;
-			}
+		if (granted.isPresent()) {
+			save.remove(granted.get());
 		}
 	}
 
@@ -406,34 +408,31 @@ public class AbilityManager {
 	 * fields {@code CharacterStats.AdjustSkillBonus} writes.
 	 */
 	private boolean adjustSkillBonuses (
-		final Property owner, final Map<String, Integer> skills, final int sign) {
+		final SaveObject owner, final Map<String, Integer> skills, final int sign)
+		throws WriteRefusedException {
 
 		if (skills.isEmpty()) {
 			return true;
 		}
 
-		final Optional<DictionaryProperty> variables = statVariables(owner);
-		if (!variables.isPresent()) {
+		final Optional<Component> stats = owner.component(CHARACTER_STATS);
+		if (!stats.isPresent()) {
 			logger.error("Character has no CharacterStats to adjust.%n");
 			return false;
 		}
 
 		for (final Map.Entry<String, Integer> bonus : skills.entrySet()) {
 			final String field = bonus.getKey() + "Bonus";
-			final Optional<Property> current = variables.get().findEntry(field);
+			final Optional<Property> current = stats.get().variable(field);
 
 			if (!current.isPresent() || !(current.get() instanceof SimpleProperty)) {
 				logger.error("CharacterStats has no '%s'.%n", field);
 				return false;
 			}
 
-			final SimpleProperty property = (SimpleProperty) current.get();
-			final int existing = property.value instanceof Number
-				? ((Number) property.value).intValue() : 0;
-
-			final int updated = existing + sign * bonus.getValue();
-			property.value = updated;
-			property.obj = updated;
+			final Object value = ((SimpleProperty) current.get()).value;
+			final int existing = value instanceof Number ? ((Number) value).intValue() : 0;
+			stats.get().set(field, existing + sign * bonus.getValue());
 		}
 
 		return true;
@@ -444,78 +443,34 @@ public class AbilityManager {
 	 * type information. One of the same component class is preferred, since
 	 * each class persists its own extra fields — a GenericSpell modelled on a
 	 * plain GenericAbility would be missing IsFree and NeedsGrimoire entirely.
+	 * Only one the game wrote will do, not one minted a moment ago.
 	 */
-	private static Optional<Property> findAbilityTemplate (
-		final List<Property> packets, final String component) {
+	private static Optional<SaveObject> findAbilityTemplate (
+		final SaveModel save, final String component, final Set<ComplexProperty> minted) {
 
-		Optional<Property> fallback = Optional.empty();
+		Optional<SaveObject> fallback = Optional.empty();
 
-		for (final Property packet : packets) {
-			if (!(packet.obj instanceof ObjectPersistencePacket)) {
+		for (final SaveObject candidate : save.objects()) {
+			if (minted.contains(candidate.property())) {
 				continue;
 			}
 
-			final ObjectPersistencePacket candidate = (ObjectPersistencePacket) packet.obj;
-			if (candidate.ComponentPackets == null) {
-				continue;
-			}
-
-			for (final uk.me.mantas.eternity.game.ComponentPersistencePacket part
-				: candidate.ComponentPackets) {
-
-				if (part == null || part.Variables == null
-					|| !part.Variables.containsKey("EffectType")
-					|| !part.Variables.containsKey("Owner")) {
-
+			for (final Component part : candidate.components()) {
+				if (!part.variable("EffectType").isPresent() || !part.variable("Owner").isPresent()) {
 					continue;
 				}
 
-				if (component != null && component.equals(part.TypeString)) {
-					return Optional.of(packet);
+				if (component != null && component.equals(part.type())) {
+					return Optional.of(candidate);
 				}
 
 				if (!fallback.isPresent()) {
-					fallback = Optional.of(packet);
+					fallback = Optional.of(candidate);
 				}
 			}
 		}
 
 		return fallback;
-	}
-
-	/**
-	 * Builds an ability object from the shape of one already in the save, so
-	 * every type string and field type matches whatever the game wrote. It
-	 * carries three components — the ability class itself, an InstanceID and a
-	 * Persistence — and only the handful of fields the game writes for a
-	 * freshly instantiated ability are set; everything else comes back from
-	 * the prefab, which is exactly right for a new one.
-	 */
-	private static Optional<Property> buildAbilityPacket (
-		final Property template
-		, final UUID guid
-		, final NewAbility ability
-		, final ObjectPersistencePacket owner) {
-
-		final boolean[] wroteAbility = {false};
-		final Optional<Property> packet = PacketMint.mint(template
-			, new PacketMint.Identity(ability.prefab + "(Clone)", guid.toString(), guid
-				, ability.path, owner.ObjectName, owner.LevelName)
-			, (type, component) -> "InstanceID".equals(type) || "Persistence".equals(type)
-				|| isAbility(component)
-			, (type, copy) -> {
-				if (!"InstanceID".equals(type) && isAbility(copy)) {
-					stampNewAbility(copy, ability, owner);
-					wroteAbility[0] = true;
-				}
-			});
-
-		if (packet.isPresent() && !wroteAbility[0]) {
-			logger.error("Template ability object had no ability component to copy.%n");
-			return Optional.empty();
-		}
-
-		return packet;
 	}
 
 	/** An ability's own component is the one carrying an EffectType. */
@@ -526,7 +481,7 @@ public class AbilityManager {
 	}
 
 	private static void stampNewAbility (
-		final ComplexProperty copy, final NewAbility ability, final ObjectPersistencePacket owner) {
+		final ComplexProperty copy, final NewAbility ability, final SaveObject owner) {
 
 		// The class matters: the save writes the concrete component
 		// name, and a spell recorded as a plain GenericAbility has none
@@ -536,7 +491,7 @@ public class AbilityManager {
 			property.obj = ability.component;
 		});
 
-		setVariable(copy, "Owner", UUID.fromString(owner.ObjectID));
+		setVariable(copy, "Owner", UUID.fromString(owner.id()));
 		setVariable(copy, "EffectType", effectTypeOf(ability.effect));
 
 		// A brand new ability is dormant; Restored() activates the
@@ -649,15 +604,11 @@ public class AbilityManager {
 		return Optional.empty();
 	}
 
-	private static Optional<DictionaryProperty> statVariables (final Property character) {
-		return ((ComplexProperty) character)
-			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-			.flatMap(c -> EKUtils.findSubComponent(c, CHARACTER_STATS))
-			.flatMap(stats -> stats.findProperty("Variables"));
-	}
-
-	private static Optional<CollectionProperty> findTalentList (final Property character) {
-		return statVariables(character).flatMap(v -> v.findEntry(TALENT_LIST));
+	private static Optional<CollectionProperty> findTalentList (final SaveObject character) {
+		return character.component(CHARACTER_STATS)
+			.flatMap(stats -> stats.variable(TALENT_LIST))
+			.filter(list -> list instanceof CollectionProperty)
+			.map(list -> (CollectionProperty) list);
 	}
 
 	private static int indexOfTalent (final CollectionProperty talents, final String prefab) {
