@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.1-beta (unreleased)
+## 1.1.1-beta (2026-11-04)
 
 ### Fixed
 
