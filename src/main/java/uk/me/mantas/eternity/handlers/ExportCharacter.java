@@ -21,19 +21,17 @@ package uk.me.mantas.eternity.handlers;
 
 import org.cef.browser.CefBrowser;
 import org.cef.callback.CefQueryCallback;
-import org.cef.callback.CefRunFileDialogCallback;
 import org.cef.handler.CefMessageRouterHandlerAdapter;
 import org.json.JSONException;
 import org.json.JSONObject;
-import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.save.CharacterExporter;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.Optional;
-import java.util.Vector;
 
 import static org.cef.handler.CefDialogHandler.FileDialogMode;
 
@@ -42,113 +40,52 @@ public class ExportCharacter extends CefMessageRouterHandlerAdapter {
 
 	@Override
 	public boolean onQuery (
-		CefBrowser browser
-		, long id
-		, String request
-		, boolean persistent
-		, CefQueryCallback callback) {
+		final CefBrowser browser
+		, final long id
+		, final String request
+		, final boolean persistent
+		, final CefQueryCallback callback) {
 
-		Environment.getInstance().workers().execute(
-			new FileDialog(browser, request, callback));
+		ChrDialog.choose(browser, FileDialogMode.FILE_DIALOG_SAVE, "Save Character"
+			, callback, "NO_SAVENAME", filename -> export(request, filename, callback));
 
 		return true;
 	}
 
 	@Override
-	public void onQueryCanceled (CefBrowser browser, long id) {
+	public void onQueryCanceled (final CefBrowser browser, final long id) {
 		logger.error("Query #%d cancelled.%n", id);
 	}
 
-	private class FileDialog implements Runnable {
-		private final CefBrowser browser;
-		private final String request;
-		private final CefQueryCallback callback;
+	private static void export (
+		final String request, final String filename, final CefQueryCallback callback) {
 
-		public FileDialog (
-			CefBrowser browser
-			, String request
-			, CefQueryCallback callback) {
+		try {
+			final JSONObject json = new JSONObject(request);
+			final File save = Environment.getInstance().state().workingSave().forReading(
+				new File(json.getString("absolutePath")), json.optBoolean("savedYet", false));
 
-			this.browser = browser;
-			this.request = request;
-			this.callback = callback;
-		}
+			final boolean exported = new CharacterExporter(save.getAbsolutePath()
+				, json.getString("GUID"), ChrDialog.withChrExtension(filename)).export();
 
-		@Override
-		public void run () {
-			browser.runFileDialog(
-				FileDialogMode.FILE_DIALOG_SAVE
-				, "Save Character"
-				, ""
-				, new Vector<String>(){{add(".chr");}}
-				, 0
-				, new FileCallback(request, callback));
-		}
-	}
-
-	private class FileCallback implements CefRunFileDialogCallback {
-		private final String request;
-		private final CefQueryCallback callback;
-
-		public FileCallback (String request, CefQueryCallback callback) {
-			this.request = request;
-			this.callback = callback;
-		}
-
-		@Override
-		public void onFileDialogDismissed (
-			final int selectedAcceptFilter
-			, final Vector<String> filenames) {
-
-			if (filenames.size() < 1 || filenames.get(0).length() < 1) {
-				callback.failure(-1, "NO_SAVENAME");
-				return;
-			}
-
-			try {
-				final JSONObject json = new JSONObject(request);
-				final String guid = json.getString("GUID");
-				final String savePath = json.getString("absolutePath");
-
-				final CharacterExporter exporter = new CharacterExporter(
-					savePath
-					, guid
-					, addChrExtension(filenames.get(0)));
-
-				boolean exportedSuccessfully = exporter.export();
-
-				if (exportedSuccessfully) {
-					callback.success("true");
-				} else {
-					callback.failure(-1, "EXPORT_ERR");
-				}
-			} catch (JSONException e) {
-				logger.error("Error parsing JSON request: %s%n", request);
-				callback.failure(-1, "BAD_REQUEST");
-			} catch (FileNotFoundException e) {
-				logger.error("Unable to find file : %s%n", e.getMessage());
-				callback.failure(-1, "FILE_NOT_FOUND");
-			} catch (IOException e) {
-				logger.error("Filesystem error: %s%n", e.getMessage());
-				callback.failure(-1, "FILESYSTEM_ERR");
-			}
-		}
-
-		private String addChrExtension (String filename) {
-			if (filename.contains(".")) {
-				Optional<String> extension = EKUtils.getExtension(filename);
-				if (!extension.isPresent()) {
-					return filename + ".chr";
-				}
-
-				if (extension.get().equals("chr")) {
-					return filename;
-				} else {
-					return filename + ".chr";
-				}
+			if (exported) {
+				callback.success("true");
 			} else {
-				return filename + ".chr";
+				callback.failure(-1, "EXPORT_ERR");
 			}
+		} catch (final JSONException e) {
+			logger.error("Error parsing JSON request: %s%n", request);
+			callback.failure(-1, "BAD_REQUEST");
+		} catch (final WriteRefusedException e) {
+			// Not a code: the page shows a reason in words as it stands.
+			logger.error("Export refused: %s%n", e.getMessage());
+			callback.failure(-1, e.getMessage());
+		} catch (final FileNotFoundException e) {
+			logger.error("Unable to find file : %s%n", e.getMessage());
+			callback.failure(-1, "FILE_NOT_FOUND");
+		} catch (final IOException e) {
+			logger.error("Filesystem error: %s%n", e.getMessage());
+			callback.failure(-1, "FILESYSTEM_ERR");
 		}
 	}
 }

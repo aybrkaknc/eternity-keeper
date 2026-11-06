@@ -21,18 +21,19 @@ package uk.me.mantas.eternity.handlers;
 
 import org.cef.browser.CefBrowser;
 import org.cef.callback.CefQueryCallback;
-import org.cef.callback.CefRunFileDialogCallback;
 import org.cef.handler.CefDialogHandler.FileDialogMode;
 import org.cef.handler.CefMessageRouterHandlerAdapter;
 import org.json.JSONException;
+import org.json.JSONObject;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.save.CharacterImporter;
-import uk.me.mantas.eternity.save.SavedGameOpener;
+import uk.me.mantas.eternity.save.CharacterImporter.ImportConflict;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.Vector;
+import java.util.Optional;
 
 public class ImportCharacter extends CefMessageRouterHandlerAdapter {
 	private static final Logger logger = Logger.getLogger(ImportCharacter.class);
@@ -45,8 +46,32 @@ public class ImportCharacter extends CefMessageRouterHandlerAdapter {
 		, boolean persistent
 		, CefQueryCallback callback) {
 
-		Environment.getInstance().workers().execute(
-			new SelectChrFile(browser, request, callback));
+		// Second phase of an import: the client already knows which CHR file
+		// to use (typically after the user confirmed an overwrite), so no
+		// file dialog is needed.
+		String confirmedChrPath = null;
+		boolean overwrite = false;
+		try {
+			final JSONObject json = new JSONObject(request);
+			if (json.has("chrPath")) {
+				confirmedChrPath = json.getString("chrPath");
+				overwrite = json.optBoolean("overwrite", false);
+			}
+		} catch (final JSONException e) {
+			logger.error("Error parsing JSON request: %s%n", request);
+			callback.failure(-1, "Error parsing JSON request.");
+			return true;
+		}
+
+		if (confirmedChrPath != null) {
+			final String chrPath = confirmedChrPath;
+			final boolean overwriteExisting = overwrite;
+			Environment.getInstance().mutationWorker().execute(Answered.to(callback
+				, () -> doImport(request, callback, chrPath, overwriteExisting)));
+		} else {
+			ChrDialog.choose(browser, FileDialogMode.FILE_DIALOG_OPEN, "Choose a character"
+				, callback, "NO_SAVE", chrFile -> analyseThenImport(request, callback, chrFile));
+		}
 
 		return true;
 	}
@@ -56,86 +81,72 @@ public class ImportCharacter extends CefMessageRouterHandlerAdapter {
 		logger.error("Query #%d cancelled.%n", id);
 	}
 
-	private class SelectChrFile implements Runnable {
-		private final CefBrowser browser;
-		private final String request;
-		private final CefQueryCallback callback;
-
-		public SelectChrFile (
-			CefBrowser browser
-			, String request
-			, CefQueryCallback callback) {
-
-			this.browser = browser;
-			this.request = request;
-			this.callback = callback;
-		}
-
-		@Override
-		public void run () {
-			browser.runFileDialog(
-				FileDialogMode.FILE_DIALOG_OPEN
-				, "Choose a character"
-				, ""
-				, new Vector<String>(){{add(".chr");}}
-				, 0
-				, new FileCallback(request, callback));
-		}
-	}
-
-	private class FileCallback implements CefRunFileDialogCallback {
-		private final String request;
-		private final CefQueryCallback callback;
-
-		public FileCallback (
-			String request
-			, CefQueryCallback callback) {
-
-			this.request = request;
-			this.callback = callback;
-		}
-
-		@Override
-		public void onFileDialogDismissed (
-			final int selectedAcceptFilter
-			, final Vector<String> filenames) {
-
-			if (filenames.size() < 1 || filenames.get(0).length() < 1) {
-				callback.failure(-1, "NO_SAVE");
-				return;
-			}
-
-			doImport(request, callback, filenames.get(0));
-		}
-	}
-
-	private void doImport (
+	// First phase: if the character already exists in the target save, ask
+	// the client to confirm the overwrite instead of importing right away.
+	private void analyseThenImport (
 		final String request
 		, final CefQueryCallback callback
 		, final String chrFile) {
 
 		try {
 			final CharacterImporter importer = new CharacterImporter(request, chrFile);
-			final boolean success = importer.importCharacter();
+			final Optional<ImportConflict> conflict = importer.detectConflict();
 
-			if (success) {
-				final SavedGameOpener opener = new SavedGameOpener(
-					importer.saveFile.getAbsolutePath()
-					, callback);
+			if (conflict.isPresent()) {
+				final JSONObject confirm = new JSONObject();
+				confirm.put("characterName", conflict.get().characterName);
+				confirm.put("isMainCharacter", conflict.get().mainCharacter);
+				confirm.put("chrPath", chrFile);
 
-				opener.run();
-			} else {
-				callback.failure(-1, "Character import failed.");
+				final JSONObject response = new JSONObject();
+				response.put("confirmOverwrite", confirm);
+				callback.success(response.toString());
+				return;
 			}
-		} catch (JSONException e) {
+		} catch (final JSONException e) {
 			logger.error("Error parsing JSON request: %s%n", request);
 			callback.failure(-1, "Error parsing JSON request.");
-		} catch (FileNotFoundException e) {
+			return;
+		} catch (final FileNotFoundException e) {
 			logger.error("File not found: %s%n", e.getMessage());
 			callback.failure(-1, "Unable to find your save or CHR file.");
-		} catch (IOException e) {
+			return;
+		} catch (final WriteRefusedException e) {
+			logger.error("Import refused: %s%n", e.getMessage());
+			callback.failure(-1, e.getMessage());
+			return;
+		} catch (final IOException e) {
 			logger.error("%s%n", e.getMessage());
-			callback.failure(-1, "Error modifying temporary MobileObjects.save");
+			callback.failure(-1, "Error reading save or CHR file.");
+			return;
 		}
+
+		doImport(request, callback, chrFile, false);
+	}
+
+	// The import is an edit of the working save like any Apply, run through
+	// the same steps (SaveMutation): a step of the save's history, put back
+	// when refused or failed, taken back when it cannot be handed back.
+	private void doImport (
+		final String request
+		, final CefQueryCallback callback
+		, final String chrFile
+		, final boolean overwrite) {
+
+		new SaveMutation(logger, true, (save, json) -> {
+			final CharacterImporter importer;
+			try {
+				importer = new CharacterImporter(request, chrFile);
+			} catch (final FileNotFoundException e) {
+				logger.error("File not found: %s%n", e.getMessage());
+				return "Unable to find your save or CHR file.";
+			}
+
+			final boolean imported = overwrite
+				? importer.overwriteCharacter()
+				: importer.importCharacter();
+
+			return imported ? null : "Character import failed.";
+		}).run(request, callback);
 	}
 }

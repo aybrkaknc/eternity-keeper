@@ -6,7 +6,7 @@
 
 	<groupId>uk.me.mantas</groupId>
 	<artifactId>eternity</artifactId>
-	<version>0.21a</version>
+	<version>1.1.1-beta</version>
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -52,17 +52,17 @@
 		<dependency>
 			<groupId>org.json</groupId>
 			<artifactId>json</artifactId>
-			<version>20141113</version>
+			<version>20250517</version>
 		</dependency>
 		<dependency>
 			<groupId>commons-io</groupId>
 			<artifactId>commons-io</artifactId>
-			<version>2.4</version>
+			<version>2.22.0</version>
 		</dependency>
 		<dependency>
 			<groupId>net.lingala.zip4j</groupId>
 			<artifactId>zip4j</artifactId>
-			<version>2.6.4</version>
+			<version>2.11.6</version>
 		</dependency>
 		<dependency>
 			<groupId>org.jooq</groupId>
@@ -82,22 +82,12 @@
 		<dependency>
 			<groupId>com.google.guava</groupId>
 			<artifactId>guava</artifactId>
-			<version>30.0-jre</version>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.httpcomponents</groupId>
-			<artifactId>httpclient</artifactId>
-			<version>4.5</version>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.httpcomponents</groupId>
-			<artifactId>fluent-hc</artifactId>
-			<version>4.5</version>
+			<version>33.7.2-jre</version>
 		</dependency>
 		<dependency>
 			<groupId>ch.qos.logback</groupId>
 			<artifactId>logback-classic</artifactId>
-			<version>1.0.13</version>
+			<version>1.3.16</version>
 		</dependency>
 		<dependency>
 			<groupId>se.softhouse</groupId>
@@ -109,7 +99,7 @@
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
-			<version>4.12</version>
+			<version>4.13.2</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
@@ -145,9 +135,22 @@
 						<configuration>
 							<transformers>
 								<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-									<mainClass>uk.me.mantas.eternity.EternityKeeper</mainClass>
+									<mainClass>uk.me.mantas.eternity.Launcher</mainClass>
 								</transformer>
 							</transformers>
+							<!-- The jar runs on Java 8, from the class path: the module
+							     descriptors and Java 9+ variants its libraries carry are
+							     never read, and one library's descriptor at the root of a
+							     jar holding all of them would describe the wrong thing. -->
+							<filters>
+								<filter>
+									<artifact>*:*</artifact>
+									<excludes>
+										<exclude>module-info.class</exclude>
+										<exclude>META-INF/versions/**</exclude>
+									</excludes>
+								</filter>
+							</filters>
 							<artifactSet>
 								<excludes>
 									<!--
@@ -194,9 +197,22 @@
 						<configuration>
 							<transformers>
 								<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-									<mainClass>uk.me.mantas.eternity.EternityKeeper</mainClass>
+									<mainClass>uk.me.mantas.eternity.Launcher</mainClass>
 								</transformer>
 							</transformers>
+							<!-- The jar runs on Java 8, from the class path: the module
+							     descriptors and Java 9+ variants its libraries carry are
+							     never read, and one library's descriptor at the root of a
+							     jar holding all of them would describe the wrong thing. -->
+							<filters>
+								<filter>
+									<artifact>*:*</artifact>
+									<excludes>
+										<exclude>module-info.class</exclude>
+										<exclude>META-INF/versions/**</exclude>
+									</excludes>
+								</filter>
+							</filters>
 						</configuration>
 						<executions>
 							<execution>
@@ -207,42 +223,68 @@
 							</execution>
 						</executions>
 					</plugin>
-				</plugins>
-			</build>
-		</profile>
-		<profile>
-			<id>win32</id>
-			<dependencies>
-				<dependency>
-					<groupId>dependencies</groupId>
-					<artifactId>gluegen-rt-natives-windows-i586</artifactId>
-					<version>1.0</version>
-				</dependency>
-				<dependency>
-					<groupId>dependencies</groupId>
-					<artifactId>jogl-all-natives-windows-i586</artifactId>
-					<version>1.0</version>
-				</dependency>
-			</dependencies>
-			<build>
-				<plugins>
+					<!-- "Eternity Keeper.exe": starts the jar beside it with the Java 8
+					     runtime a release carries in its own jre folder, never whatever
+					     java the machine has (the embedded browser's natives are Java 8
+					     era). tools/release/build-release.ps1 puts the pieces together. -->
 					<plugin>
-						<groupId>org.apache.maven.plugins</groupId>
-						<artifactId>maven-shade-plugin</artifactId>
-						<version>2.3</version>
-						<configuration>
-							<transformers>
-								<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-									<mainClass>uk.me.mantas.eternity.EternityKeeper</mainClass>
-								</transformer>
-							</transformers>
-						</configuration>
+						<groupId>com.akathist.maven.plugins.launch4j</groupId>
+						<artifactId>launch4j-maven-plugin</artifactId>
+						<version>1.7.25</version>
 						<executions>
 							<execution>
+								<id>launcher</id>
 								<phase>package</phase>
 								<goals>
-									<goal>shade</goal>
+									<goal>launch4j</goal>
 								</goals>
+								<configuration>
+									<headerType>gui</headerType>
+									<outfile>${project.build.directory}/Eternity Keeper.exe</outfile>
+									<jar>eternity-keeper.jar</jar>
+									<dontWrapJar>true</dontWrapJar>
+									<chdir>.</chdir>
+									<errTitle>Eternity Keeper</errTitle>
+									<icon>${project.basedir}/src/main/launcher/eternity-keeper.ico</icon>
+									<singleInstance>
+										<mutexName>EternityKeeper</mutexName>
+										<windowTitle>Eternity Keeper</windowTitle>
+									</singleInstance>
+									<jre>
+										<path>jre</path>
+										<bundledJre64Bit>true</bundledJre64Bit>
+										<runtimeBits>64</runtimeBits>
+										<opts>
+											<!-- Quoted: the install folder itself is "Eternity Keeper",
+											     and Launch4j passes an option through exactly as written.
+											     Unquoted, java took the path up to the first space and the
+											     rest as the class to run, and the editor never started. -->
+											<opt>"-Djava.library.path=%EXEDIR%\lib\native\win64"</opt>
+										</opts>
+									</jre>
+									<messages>
+										<startupErr>Eternity Keeper could not start.</startupErr>
+										<!-- Two causes, and the second looks nothing like the first: the
+										     launcher and Java 8 read their own paths in the computer's code
+										     page, so from a folder named in another script (measured: Cyrillic
+										     and Japanese on a Central European Windows) the jre is "not there". -->
+										<bundledJreErr>Eternity Keeper could not find the Java runtime it ships with (the "jre" folder beside it). If the download was extracted whole, with every folder in it, the cause is where it was put: this folder's path has letters that Windows cannot pass on to the runtime. Move the Eternity Keeper folder to a path with plain letters, for example C:\Games, and start it again.</bundledJreErr>
+										<jreVersionErr>The "jre" folder beside Eternity Keeper is not the Java 8 runtime it ships with. Re-extract the download.</jreVersionErr>
+										<launcherErr>Eternity Keeper's launcher failed.</launcherErr>
+									</messages>
+									<versionInfo>
+										<fileVersion>1.0.0.0</fileVersion>
+										<txtFileVersion>${project.version}</txtFileVersion>
+										<fileDescription>Eternity Keeper, a Pillars of Eternity save editor</fileDescription>
+										<copyright>GNU General Public License v3 or later</copyright>
+										<productVersion>1.0.0.0</productVersion>
+										<txtProductVersion>${project.version}</txtProductVersion>
+										<productName>Eternity Keeper</productName>
+										<companyName>Eternity Keeper contributors</companyName>
+										<internalName>eternity-keeper</internalName>
+										<originalFilename>Eternity Keeper.exe</originalFilename>
+									</versionInfo>
+								</configuration>
 							</execution>
 						</executions>
 					</plugin>
@@ -252,6 +294,8 @@
 	</profiles>
 
 	<build>
+		<!-- A stable name, so launchers and scripts don't change with the version. -->
+		<finalName>eternity-keeper</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

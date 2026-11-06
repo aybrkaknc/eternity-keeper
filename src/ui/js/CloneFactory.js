@@ -25,7 +25,13 @@ CloneFactory.clone = function (element) {
 
 	var spawn = element.clone();
 	spawn.attr('id', null);
+
+	// Clearing the data cache is not enough: the attribute rides along in the
+	// clone, so every tile on screen still answers $('[data-bound]') with no
+	// id to bind to. Nothing re-runs bindDOM today, but leaving the markup
+	// saying something untrue is how the next person gets misled.
 	spawn.data('bound', null);
+	spawn.removeAttr('data-bound');
 
 	return spawn;
 };

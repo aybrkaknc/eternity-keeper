@@ -19,18 +19,15 @@
 package uk.me.mantas.eternity;
 
 import org.apache.commons.io.FileUtils;
-import org.joda.time.DateTime;
-import org.joda.time.DateTimeZone;
-import org.joda.time.format.DateTimeFormat;
-import org.joda.time.format.DateTimeFormatter;
 import se.softhouse.jargo.Argument;
 import se.softhouse.jargo.ArgumentException;
 import se.softhouse.jargo.CommandLineParser;
 import se.softhouse.jargo.ParsedArguments;
-import uk.me.mantas.eternity.environment.Environment;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 
 import static com.google.common.collect.Range.atLeast;
@@ -68,11 +65,6 @@ public class TestEnvironment {
 					+ "This will get cleaned on every run of this script so change it if you "
 					+ "want to preserve a previous environment.")
 				.build();
-		private static final Argument<Boolean> forceUpdate =
-			optionArgument("-u", "--force-update")
-				.description("Supplying this flag will create or rename the jar in the project's "
-					+ "jar directory in order to force the editor to detect a new update.")
-				.build();
 	}
 
 	public static void main (final String[] args) {
@@ -83,8 +75,7 @@ public class TestEnvironment {
 						Args.gameLocation
 						, Args.saveLocation
 						, Args.numSaves
-						, Args.workspace
-						, Args.forceUpdate)
+						, Args.workspace)
 					.andArguments(Args.helpArgument)
 					.parse(args);
 
@@ -100,13 +91,11 @@ public class TestEnvironment {
 		final File saveLocation = args.get(Args.saveLocation);
 		final Integer numSaves = args.get(Args.numSaves);
 		final String workspacePrefix = args.get(Args.workspace);
-		final Boolean forceUpdate = args.get(Args.forceUpdate);
 
 		assert gameLocation != null
 			&& saveLocation != null
 			&& numSaves != null
-			&& workspacePrefix != null
-			&& forceUpdate != null;
+			&& workspacePrefix != null;
 
 		final File workspace = new File(System.getProperty("java.io.tmpdir"), workspacePrefix);
 
@@ -151,9 +140,37 @@ public class TestEnvironment {
 			System.exit(1);
 		}
 
+		// The game's own words, in every language it ships: hireling and
+		// prisoner names are only ids into these tables (save/GameText), quests
+		// are named out of them, and the catalogs' names are shown in the
+		// language of the game through them. Not the conversations, which are
+		// three quarters of the text and which nothing reads.
+		final Path localized = Paths.get("PillarsOfEternity_Data", "data", "localized");
+
 		try {
 			System.out.printf("Copying portraits...%n");
 			FileUtils.copyDirectory(portraitsLocation, portraitsWorkspace);
+
+			System.out.printf("Copying the game's text...%n");
+			final File[] languages = gameLocation.toPath().resolve(localized).toFile()
+				.listFiles(File::isDirectory);
+
+			for (final File language : languages == null ? new File[0] : languages) {
+				final File copy =
+					gameWorkspace.toPath().resolve(localized).resolve(language.getName()).toFile();
+
+				final File description = new File(language, "language.xml");
+				if (description.isFile()) {
+					FileUtils.copyFileToDirectory(description, copy);
+				}
+
+				for (final String part : new String[]{"game", "quests"}) {
+					final File tables = new File(new File(language, "text"), part);
+					if (tables.isDirectory()) {
+						FileUtils.copyDirectory(tables, new File(new File(copy, "text"), part));
+					}
+				}
+			}
 		} catch (final IOException e) {
 			System.err.printf("Failed: %s%n", e.getMessage());
 			System.exit(1);
@@ -181,48 +198,5 @@ public class TestEnvironment {
 		settings.json.put("gameLocation", gameWorkspace.getAbsolutePath());
 		settings.json.put("savesLocation", saveWorkspace.getAbsolutePath());
 		settings.save();
-
-		if (forceUpdate) {
-			System.out.printf("Renaming jar...%n");
-			final Environment environment = Environment.getInstance();
-			Environment.joinAllWorkers();
-
-			final File jarDirectory = environment.directory().jar();
-			final File[] jars = jarDirectory.listFiles();
-			if (jars == null || jars.length > 1) {
-				System.err.printf(
-					"Expected only one file in '%s', your project's environment is corrupt.%n"
-					, jarDirectory.getAbsolutePath());
-				System.exit(1);
-			}
-
-			final DateTime epoch = new DateTime(0).withZone(DateTimeZone.UTC);
-			final DateTimeFormatter formatter =
-				DateTimeFormat.forPattern("yyyyMMddHHmmss").withZoneUTC();
-			final String newJarName = String.format("%s.jar", formatter.print(epoch));
-			final File newJar = new File(jarDirectory, newJarName);
-
-			if (jars.length < 1) {
-				try {
-					if (!newJar.createNewFile()) {
-						throw new IOException("createNewFile() failed");
-					}
-				} catch (final IOException e) {
-					System.err.printf(
-						"Unable to create dummy jar file '%s': %s%n"
-						, newJar.getAbsolutePath()
-						, e.getMessage());
-					System.exit(1);
-				}
-			} else {
-				final File oldJar = jars[0];
-				if (!oldJar.renameTo(newJar)) {
-					System.err.printf(
-						"Unable to rename %s to %s.%n"
-						, oldJar.getAbsolutePath()
-						, newJarName);
-				}
-			}
-		}
 	}
 }

@@ -22,8 +22,6 @@ package uk.me.mantas.eternity.environment;
 import org.cef.OS;
 import uk.me.mantas.eternity.Logger;
 
-import java.io.File;
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -34,6 +32,12 @@ public class Environment {
 	private static final long SHUTDOWN_TIMEOUT_SECONDS = 20;
 	private ExecutorService workers =
 		Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+
+	// All operations that modify (or copy) an extracted save run here, one at
+	// a time. Letting them overlap on the parallel pool corrupted copies when
+	// e.g. a save was packaged while a party update was still writing
+	// MobileObjects.save.
+	private ExecutorService mutationWorker = Executors.newSingleThreadExecutor();
 
 	private final Factories factories = new Factories();
 	public Factories factory () { return factories; }
@@ -75,45 +79,35 @@ public class Environment {
 		return workers;
 	}
 
+	public ExecutorService mutationWorker () {
+		return mutationWorker;
+	}
+
 	public boolean isWindows () {
 		// This method just exists so we can mock it in tests.
 		return OS.isWindows();
 	}
 
-	public static String detectPlatform () {
-		if (OS.isWindows()) {
-			if (System.getenv("ProgramFiles(x86)") == null) {
-				return "win32";
-			} else {
-				return "win64";
-			}
-		} else {
-			return "linux64";
-		}
-	}
-
-	public Optional<Long> detectExeSize () {
-		final File exe = new File("eternity.exe");
-		if (!exe.exists() || !exe.isFile()) {
-			return Optional.empty();
-		}
-
-		return Optional.of(exe.length());
-	}
-
 	public static void joinAllWorkers () {
-		final ExecutorService workers = getInstance().workers();
-		workers.shutdown();
+		shutdownPool(getInstance().workers());
+		shutdownPool(getInstance().mutationWorker());
+
+		// Nothing is editing any more; don't leave an unsaved copy in temp.
+		getInstance().state().workingSave().opening();
+	}
+
+	private static void shutdownPool (final ExecutorService pool) {
+		pool.shutdown();
 
 		try {
-			if (!workers.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-				workers.shutdownNow();
-				if (!workers.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+			if (!pool.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+				pool.shutdownNow();
+				if (!pool.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
 					logger.error("Thread pool did not terminate!%n");
 				}
 			}
 		} catch (final InterruptedException e) {
-			workers.shutdownNow();
+			pool.shutdownNow();
 			Thread.currentThread().interrupt();
 		}
 	}

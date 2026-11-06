@@ -19,8 +19,6 @@
 
 package uk.me.mantas.eternity.serializer.write;
 
-import com.google.common.primitives.Ints;
-import com.google.common.primitives.Longs;
 import com.google.common.primitives.UnsignedInteger;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.serializer.CSharpType;
@@ -29,18 +27,30 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
-import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Low-level binary writer for the Polenter SharpSerializer format used by
+ * Pillars of Eternity. Encodes variable-width integers, 7-bit length-prefixed
+ * UTF-8 strings, mixed-endian .NET {@code System.Guid} values, and C# enum
+ * values with cached reflection metadata.
+ */
 public class BinaryWriter {
 	private static final Logger logger = Logger.getLogger(BinaryWriter.class);
+	private static final Map<Class<?>, Optional<Field>> ENUM_VALUE_FIELD_CACHE =
+		new ConcurrentHashMap<>();
+
 	public DataOutput out;
 
-	public BinaryWriter (DataOutput out) {
+	public BinaryWriter (final DataOutput out) {
 		this.out = out;
 	}
 
-	public void writeValue (Object value) throws IOException {
+	public void writeValue (final Object value) throws IOException {
 		if (value == null) {
 			out.writeBoolean(false);
 		} else {
@@ -49,7 +59,7 @@ public class BinaryWriter {
 		}
 	}
 
-	private void writeValueCore (Object value) throws IOException {
+	private void writeValueCore (final Object value) throws IOException {
 		if (value == null) {
 			logger.error("Cannot write null value!%n");
 			return;
@@ -66,8 +76,28 @@ public class BinaryWriter {
 			return;
 		}
 
+		if (value instanceof Integer) {
+			out.writeInt((int) value);
+			return;
+		}
+
 		if (value instanceof Boolean) {
 			out.writeBoolean((boolean) value);
+			return;
+		}
+
+		if (value instanceof Float) {
+			out.writeFloat((float) value);
+			return;
+		}
+
+		if (value instanceof UUID) {
+			writeGuid((UUID) value);
+			return;
+		}
+
+		if (value instanceof UnsignedInteger) {
+			out.writeInt(((UnsignedInteger) value).intValue());
 			return;
 		}
 
@@ -81,22 +111,6 @@ public class BinaryWriter {
 			return;
 		}
 
-		if (value instanceof UUID) {
-			UUID uuid = (UUID) value;
-			byte[] guid = new byte[16];
-			long mostSig = uuid.getMostSignificantBits();
-			long leastSig = uuid.getLeastSignificantBits();
-			byte[] ms = Longs.toByteArray(mostSig);
-			byte[] ls = Longs.toByteArray(leastSig);
-			int a = Integer.reverseBytes(ByteBuffer.wrap(ms).getInt(0));
-			System.arraycopy(Ints.toByteArray(a), 0, guid, 0, 4);
-			guid[4] = ms[5]; guid[5] = ms[4]; guid[6] = ms[7]; guid[7] = ms[6];
-			System.arraycopy(ls, 0, guid, 8, 8);
-
-			out.write(guid);
-			return;
-		}
-
 		if (value instanceof Double) {
 			out.writeDouble((double) value);
 			return;
@@ -107,49 +121,13 @@ public class BinaryWriter {
 			return;
 		}
 
-		if (value instanceof Integer) {
-			out.writeInt((int) value);
-			return;
-		}
-
-		if (value instanceof UnsignedInteger) {
-			out.writeInt(((UnsignedInteger) value).intValue());
-			return;
-		}
-
 		if (value instanceof Long) {
 			out.writeLong((long) value);
 			return;
 		}
 
-		if (value instanceof Float) {
-			out.writeFloat((float) value);
-			return;
-		}
-
 		if (value.getClass().isEnum()) {
-			int ordinal;
-			Class cls = value.getClass();
-
-			try {
-				Field nField = cls.getField("n");
-				ordinal = nField.getInt(value);
-				out.writeInt(ordinal);
-				return;
-			} catch (NoSuchFieldException | IllegalAccessException ignored) {}
-
-			Object[] constants = cls.getEnumConstants();
-			for (int i = 0; i < constants.length; i++) {
-				if (value == constants[i]) {
-					out.writeInt(i);
-					return;
-				}
-			}
-
-			logger.error(
-				"Supposed enum value couldn't be "
-				+ "matched with any enum constants!%n");
-
+			writeEnumValue(value);
 			return;
 		}
 
@@ -168,8 +146,74 @@ public class BinaryWriter {
 			, value.getClass().getSimpleName());
 	}
 
-	public void writeStringGuarded (String value) throws IOException {
-		if (value == null || value.equals("")) {
+	/**
+	 * Writes a {@link UUID} in .NET {@code System.Guid.ToByteArray()} layout
+	 * (little-endian {@code Data1}, {@code Data2}, {@code Data3}; big-endian
+	 * {@code Data4}) without intermediate array or buffer allocations.
+	 */
+	private void writeGuid (final UUID uuid) throws IOException {
+		final long msb = uuid.getMostSignificantBits();
+		final long lsb = uuid.getLeastSignificantBits();
+		final byte[] guid = new byte[16];
+
+		// Data1 (32-bit little-endian)
+		guid[0] = (byte) (msb >>> 32);
+		guid[1] = (byte) (msb >>> 40);
+		guid[2] = (byte) (msb >>> 48);
+		guid[3] = (byte) (msb >>> 56);
+
+		// Data2 (16-bit little-endian)
+		guid[4] = (byte) (msb >>> 16);
+		guid[5] = (byte) (msb >>> 24);
+
+		// Data3 (16-bit little-endian)
+		guid[6] = (byte) msb;
+		guid[7] = (byte) (msb >>> 8);
+
+		// Data4 (64-bit big-endian)
+		guid[8] = (byte) (lsb >>> 56);
+		guid[9] = (byte) (lsb >>> 48);
+		guid[10] = (byte) (lsb >>> 40);
+		guid[11] = (byte) (lsb >>> 32);
+		guid[12] = (byte) (lsb >>> 24);
+		guid[13] = (byte) (lsb >>> 16);
+		guid[14] = (byte) (lsb >>> 8);
+		guid[15] = (byte) lsb;
+
+		out.write(guid);
+	}
+
+	private void writeEnumValue (final Object value) throws IOException {
+		final Class<?> cls = value.getClass();
+		final Optional<Field> nField = ENUM_VALUE_FIELD_CACHE.computeIfAbsent(cls, c -> {
+			try {
+				return Optional.of(c.getField("n"));
+			} catch (final NoSuchFieldException e) {
+				return Optional.empty();
+			}
+		});
+
+		if (nField.isPresent()) {
+			try {
+				out.writeInt(nField.get().getInt(value));
+				return;
+			} catch (final IllegalAccessException ignored) {
+			}
+		}
+
+		final Object[] constants = cls.getEnumConstants();
+		for (int i = 0; i < constants.length; i++) {
+			if (value == constants[i]) {
+				out.writeInt(i);
+				return;
+			}
+		}
+
+		logger.error("Supposed enum value couldn't be matched with any enum constants!%n");
+	}
+
+	public void writeStringGuarded (final String value) throws IOException {
+		if (value == null || value.isEmpty()) {
 			out.writeBoolean(false);
 		} else {
 			out.writeBoolean(true);
@@ -177,8 +221,8 @@ public class BinaryWriter {
 		}
 	}
 
-	private void writeString (String value)	throws IOException {
-		byte[] bytes = value.getBytes("UTF-8");
+	private void writeString (final String value) throws IOException {
+		final byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
 		write7BitEncodedInt(bytes.length);
 		out.write(bytes);
 	}
@@ -192,8 +236,8 @@ public class BinaryWriter {
 		out.writeByte((byte) v);
 	}
 
-	public void writeNumber (int n) throws IOException {
-		byte size = getIntSizeInBytes(n);
+	public void writeNumber (final int n) throws IOException {
+		final byte size = getIntSizeInBytes(n);
 		out.writeByte(size);
 
 		if (size > 0) {
@@ -212,7 +256,7 @@ public class BinaryWriter {
 		}
 	}
 
-	private byte getIntSizeInBytes (int n) {
+	private byte getIntSizeInBytes (final int n) {
 		if (n == 0) {
 			return 0;
 		}
@@ -228,13 +272,13 @@ public class BinaryWriter {
 		return 1;
 	}
 
-	private byte[] unboxBytes (Object value) {
+	private byte[] unboxBytes (final Object value) {
 		if (value instanceof byte[]) {
 			return (byte[]) value;
 		}
 
-		Byte[] in = (Byte[]) value;
-		byte[] out = new byte[in.length];
+		final Byte[] in = (Byte[]) value;
+		final byte[] out = new byte[in.length];
 		for (int i = 0; i < in.length; i++) {
 			out[i] = in[i];
 		}
@@ -242,9 +286,9 @@ public class BinaryWriter {
 		return out;
 	}
 
-	public void writeNumbers (int[] n) throws IOException {
+	public void writeNumbers (final int[] n) throws IOException {
 		writeNumber(n.length);
-		for (int i : n) {
+		for (final int i : n) {
 			writeNumber(i);
 		}
 	}

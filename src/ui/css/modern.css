@@ -1,0 +1,1283 @@
+@charset "utf-8";
+
+/**
+ *  Eternity Keeper, a Pillars of Eternity save game editor.
+ *
+ *  Clean & Transparent "Obsidian & Parchment Glass" Design System
+ *  + 60fps Hardware-Accelerated Motion & High-Readability Layout Architecture.
+ *
+ *  Engineered for embedded JCEF (Chromium 45) & modern browsers:
+ *  uses multi-layered rgba() gradients, specular inset borders, progressive
+ *  backdrop-filter blur, dual-stack typography, and compositor-friendly
+ *  transform/opacity animations (avoiding CSS Grid and flexbox gap).
+ */
+
+/* =========================================================================
+   1. GPU-ACCELERATED KEYFRAME ANIMATIONS
+   ========================================================================= */
+
+@-webkit-keyframes ekFadeSlideUp {
+	0% {
+		opacity: 0;
+		-webkit-transform: translate3d(0, 8px, 0);
+		transform: translate3d(0, 8px, 0);
+	}
+	100% {
+		opacity: 1;
+		-webkit-transform: translate3d(0, 0, 0);
+		transform: translate3d(0, 0, 0);
+	}
+}
+
+@keyframes ekFadeSlideUp {
+	0% {
+		opacity: 0;
+		-webkit-transform: translate3d(0, 8px, 0);
+		transform: translate3d(0, 8px, 0);
+	}
+	100% {
+		opacity: 1;
+		-webkit-transform: translate3d(0, 0, 0);
+		transform: translate3d(0, 0, 0);
+	}
+}
+
+@-webkit-keyframes ekTileCascade {
+	0% {
+		opacity: 0;
+		-webkit-transform: translate3d(0, 10px, 0) scale(0.985);
+		transform: translate3d(0, 10px, 0) scale(0.985);
+	}
+	100% {
+		opacity: 1;
+		-webkit-transform: translate3d(0, 0, 0) scale(1);
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+}
+
+@keyframes ekTileCascade {
+	0% {
+		opacity: 0;
+		-webkit-transform: translate3d(0, 10px, 0) scale(0.985);
+		transform: translate3d(0, 10px, 0) scale(0.985);
+	}
+	100% {
+		opacity: 1;
+		-webkit-transform: translate3d(0, 0, 0) scale(1);
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+}
+
+@-webkit-keyframes ekProgressShimmer {
+	0% {
+		background-position: 200% 0;
+	}
+	100% {
+		background-position: -200% 0;
+	}
+}
+
+@keyframes ekProgressShimmer {
+	0% {
+		background-position: 200% 0;
+	}
+	100% {
+		background-position: -200% 0;
+	}
+}
+
+@-webkit-keyframes ekPulseGlow {
+	0%, 100% {
+		box-shadow: inset 0 0 0 2px #d8b55b, 0 8px 26px rgba(0, 0, 0, .55), 0 0 14px rgba(216, 181, 91, .28);
+	}
+	50% {
+		box-shadow: inset 0 0 0 2px #f0d58a, 0 8px 30px rgba(0, 0, 0, .65), 0 0 22px rgba(240, 213, 138, .52);
+	}
+}
+
+@keyframes ekPulseGlow {
+	0%, 100% {
+		box-shadow: inset 0 0 0 2px #d8b55b, 0 8px 26px rgba(0, 0, 0, .55), 0 0 14px rgba(216, 181, 91, .28);
+	}
+	50% {
+		box-shadow: inset 0 0 0 2px #f0d58a, 0 8px 30px rgba(0, 0, 0, .65), 0 0 22px rgba(240, 213, 138, .52);
+	}
+}
+
+@-webkit-keyframes ekAlertSlideDown {
+	0% {
+		opacity: 0;
+		-webkit-transform: translate3d(0, -8px, 0);
+		transform: translate3d(0, -8px, 0);
+	}
+	100% {
+		opacity: 1;
+		-webkit-transform: translate3d(0, 0, 0);
+		transform: translate3d(0, 0, 0);
+	}
+}
+
+@keyframes ekAlertSlideDown {
+	0% {
+		opacity: 0;
+		-webkit-transform: translate3d(0, -8px, 0);
+		transform: translate3d(0, -8px, 0);
+	}
+	100% {
+		opacity: 1;
+		-webkit-transform: translate3d(0, 0, 0);
+		transform: translate3d(0, 0, 0);
+	}
+}
+
+.ek-view-enter {
+	-webkit-animation: ekFadeSlideUp .22s cubic-bezier(.16, 1, .3, 1) both;
+	animation: ekFadeSlideUp .22s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.ek-char-switch {
+	-webkit-animation: ekFadeSlideUp .18s cubic-bezier(.16, 1, .3, 1) both;
+	animation: ekFadeSlideUp .18s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.ek-tile-enter {
+	-webkit-animation: ekTileCascade .24s cubic-bezier(.16, 1, .3, 1) both;
+	animation: ekTileCascade .24s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.ek-fab-enter {
+	-webkit-animation: ekFadeSlideUp .20s cubic-bezier(.16, 1, .3, 1) both;
+	animation: ekFadeSlideUp .20s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.ek-alert-enter {
+	-webkit-animation: ekAlertSlideDown .22s cubic-bezier(.16, 1, .3, 1) both;
+	animation: ekAlertSlideDown .22s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+/* =========================================================================
+   2. DUAL-STACK TYPOGRAPHY, CANVAS DEPTH & HIGH-CONTRAST READABILITY
+   ========================================================================= */
+
+body {
+	background-color: #1e1812;
+	background-image: linear-gradient(160deg, #261f18 0%, #1c1712 55%, #14100c 100%);
+	background-attachment: fixed;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Display & narrative headings retain the classic Pillars serif with refined spacing */
+.navbar-brand,
+.modal-title,
+.pm-titlebar,
+.panel-bar-title,
+.save-info .name,
+.skills-head,
+.identity-head,
+.inv-panel-head,
+.abl-panel-head,
+.sh-panel-head,
+.grm-books-head,
+.grm-title,
+.vnd-rail-head,
+.vnd-title {
+	font-family: "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif;
+	letter-spacing: .015em;
+}
+
+/* Controls, badges, filters, and numeric inputs use a crisp modern UI sans-serif stack */
+input.form-control,
+select.form-control,
+.ek-save-count,
+.ek-save-sort-wrap label,
+.ek-backup-badge,
+.panel-bar-hint,
+.panel-bar-note,
+.skill-points,
+.skills-remaining,
+.skills-note,
+.identity-chip-parts,
+.identity-effect,
+.inv-count,
+.abl-count,
+.abl-meta,
+.sh-count,
+.vnd-meta,
+.finder-count,
+.finder-detail {
+	font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Technical variable keys and console REPL use clean monospace for effortless scanning */
+.main-panel > .raw > table.table > tbody > tr > td:first-child,
+.main-panel > .globals > table.table > tbody > tr > td:first-child,
+#referenceTable > tbody > tr > td:first-child,
+.console-output,
+#consoleInput,
+.console-prompt {
+	font-family: Consolas, "SFMono-Regular", Menlo, Monaco, "Liberation Mono", monospace;
+	font-size: 12.5px;
+}
+
+/* High-contrast secondary text in Dark Mode (guarantees >= 4.5:1 contrast on dark glass) */
+.panel-bar-hint,
+.panel-bar-note,
+.raw-unnamed,
+.ek-save-sort-wrap label,
+.ek-save-count,
+.save-info .date,
+.inv-slot-label,
+.inv-sub-label,
+.inv-count,
+.inv-weapon-index,
+.inv-browse-target,
+.inv-browse-pager,
+.inv-carry-hint,
+.skill-points,
+.skills-remaining,
+.skills-note,
+.identity-hint,
+.identity-effect-note,
+.identity-sheet-head,
+.identity-chip-name,
+.identity-chip-parts,
+.abl-character-meta,
+.abl-count,
+.abl-meta,
+.abl-empty,
+.abl-any-class,
+.abl-browse-pager,
+.abl-detail-empty,
+.abl-detail-meta,
+.abl-detail-label,
+.abl-detail-prefab,
+.abl-kind,
+.sh-turn,
+.sh-count,
+.sh-filter,
+.sh-upgrade-desc,
+.sh-upgrade-cost,
+.sh-empty,
+.sh-gauge i,
+.sh-gauge-label,
+.sh-gauge-delta,
+.sh-number label,
+.sh-resident-label,
+.sh-resident-note,
+.sh-person-detail,
+.sh-person-empty,
+.sh-status,
+.sh-unavailable-mark,
+.sh-unavailable p,
+.sh-unavailable-note,
+.grm-unavailable-mark,
+.grm-books-head,
+.grm-books-count,
+.grm-browse-head,
+.grm-book-where,
+.grm-book-count,
+.grm-note,
+.grm-chapter-count,
+.grm-spell-icon-empty,
+.grm-browse-subtitle,
+.grm-browse-level,
+.grm-browse-empty,
+.vnd-rail-head,
+.vnd-rail-count,
+.vnd-vendor-where,
+.vnd-vendor-count,
+.vnd-meta,
+.vnd-grid-empty,
+.vnd-legend,
+.vnd-detail-hint,
+.console-achievements-note,
+.console-reference-subtitle,
+.ptr-subject,
+.ptr-name,
+.ptr-empty,
+.cnv-note,
+.cnv-reading,
+.cmp-table .cmp-arrow,
+.cmp-table .cmp-none,
+.cmp-table .cmp-note,
+.cmp-table tr.cmp-row-note td,
+.settings-language-note,
+.settings-files,
+.bk-file {
+	color: #b8a888;
+}
+
+.panel-bar-note-on {
+	color: #e6bc7a;
+}
+
+.identity-disfavour,
+.sh-upgrade-req {
+	color: #e2a596;
+}
+
+.sh-upgrade-req-met,
+.sh-upgrade-boon {
+	color: #a4b888;
+}
+
+/* =========================================================================
+   3. CLEAN & TRANSPARENT GLASS CHROME (NAVBAR, SIDEBAR, DROPDOWNS, MODALS)
+   ========================================================================= */
+
+.navbar-inverse {
+	background: linear-gradient(180deg, rgba(44, 36, 27, .88) 0%, rgba(24, 19, 14, .94) 100%);
+	-webkit-backdrop-filter: blur(12px);
+	backdrop-filter: blur(12px);
+	border-bottom: 1px solid rgba(201, 180, 126, .26);
+	box-shadow: inset 0 1px 0 rgba(255, 245, 220, .08), 0 4px 20px rgba(0, 0, 0, .48);
+}
+
+.navbar-inverse .navbar-nav > li > a {
+	position: relative;
+	transition: color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+
+.navbar-inverse .navbar-nav > li > a:hover {
+	background-color: rgba(201, 180, 126, .08);
+}
+
+.navbar-inverse .navbar-nav > li.ek-nav-active > a,
+.navbar-inverse .navbar-nav > li.ek-nav-active > a:hover,
+.navbar-inverse .navbar-nav > li.ek-nav-active > a:focus {
+	color: #f4e8c6;
+	background: linear-gradient(180deg, rgba(201, 180, 126, .06) 0%, rgba(201, 180, 126, .16) 100%);
+	box-shadow: inset 0 -2px 0 #d8b55b;
+}
+
+.dropdown-menu {
+	background: linear-gradient(180deg, rgba(42, 34, 25, .95) 0%, rgba(26, 21, 15, .98) 100%);
+	-webkit-backdrop-filter: blur(12px);
+	backdrop-filter: blur(12px);
+	border: 1px solid rgba(201, 180, 126, .32);
+	border-radius: 6px;
+	box-shadow: inset 0 1px 0 rgba(255, 245, 220, .10), 0 12px 32px rgba(0, 0, 0, .65);
+	-webkit-animation: ekAlertSlideDown .16s cubic-bezier(.16, 1, .3, 1) both;
+	animation: ekAlertSlideDown .16s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.dropdown-menu > li > a {
+	transition: background-color .14s ease, color .14s ease, padding-left .14s ease;
+}
+
+.dropdown-menu > li > a:hover,
+.dropdown-menu > li > a:focus {
+	background-color: rgba(201, 180, 126, .14);
+	color: #fff;
+}
+
+.sidebar {
+	background: linear-gradient(180deg, rgba(24, 19, 14, .72) 0%, rgba(16, 12, 9, .82) 100%);
+	-webkit-backdrop-filter: blur(10px);
+	backdrop-filter: blur(10px);
+	border-right: 1px solid rgba(201, 180, 126, .22);
+	box-shadow: inset -1px 0 0 rgba(255, 245, 220, .05), 4px 0 18px rgba(0, 0, 0, .28);
+	transition: width .22s cubic-bezier(.16, 1, .3, 1);
+}
+
+/* Hide the global character/item finder on the Save List screen when no save is open */
+body.list-view .finder {
+	display: none;
+}
+
+.main-panel {
+	transition: margin-left .22s cubic-bezier(.16, 1, .3, 1);
+}
+
+.sidebar-toggle {
+	transition: left .22s cubic-bezier(.16, 1, .3, 1), background-color .16s ease, color .16s ease;
+}
+
+.characters li {
+	border-radius: 5px;
+	margin: 3px 8px 0 0;
+	transition: background-color .16s ease, color .16s ease, -webkit-transform .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+
+.characters li:hover {
+	background-color: rgba(201, 180, 126, .14);
+	border-color: rgba(201, 180, 126, .24);
+	-webkit-transform: translateX(2px);
+	transform: translateX(2px);
+}
+
+.characters li.active,
+.characters li.active:hover {
+	background: linear-gradient(180deg, #dfca96 0%, #c4ad75 100%);
+	border-color: rgba(14, 11, 8, .85);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 3px 10px rgba(0, 0, 0, .35);
+	-webkit-transform: translateX(0);
+	transform: translateX(0);
+}
+
+/* =========================================================================
+   4. TRANSLUCENT PANEL BARS, CARDS & CHARACTER SHEET ALIGNMENT
+   ========================================================================= */
+
+/* Every view gets generous bottom clearance so the floating Undo/Redo/Save row
+   never obscures content at the bottom of scrollable views */
+.main-panel > .view:not(.abilities-view):not(.vendors-view) {
+	padding-bottom: 92px;
+}
+
+.panel-bar {
+	padding: 7px 14px;
+	margin: 0 0 14px 0;
+	line-height: 28px;
+	background: linear-gradient(180deg, rgba(46, 38, 28, .76) 0%, rgba(28, 22, 16, .86) 100%);
+	-webkit-backdrop-filter: blur(8px);
+	backdrop-filter: blur(8px);
+	border: 1px solid rgba(201, 180, 126, .28);
+	border-radius: 6px;
+	box-shadow: inset 0 1px 0 rgba(255, 245, 220, .09), 0 6px 18px rgba(0, 0, 0, .26);
+}
+
+.panel-bar-title {
+	font-size: 16px;
+	font-weight: 600;
+	vertical-align: middle;
+}
+
+.panel-bar-hint {
+	vertical-align: middle;
+}
+
+/* Adjust fixed-height tabs for the taller padded .panel-bar so they stay clear of #fabRow */
+.abl-panel,
+.abl-browser-panel,
+.vnd-rail,
+.vnd-body {
+	height: calc(100vh - 230px);
+}
+
+.vnd-main,
+.vnd-columns {
+	width: 100%;
+}
+
+/* Character Sheet: Portrait, Attributes Card, Skills Card & Identity Panel */
+.character .portrait {
+	width: 210px;
+	min-height: 330px;
+	margin: 0 18px 18px 0;
+	padding: 0;
+	background-position: 0 0 !important;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.character .portrait > div {
+	margin-left: 0;
+	border-radius: 6px;
+}
+
+.character .portrait .portrait-btn {
+	width: 210px;
+	margin: 340px 0 0 0;
+}
+
+.character .portrait .resurrect-btn {
+	width: 210px;
+	margin: 10px 0 0 0;
+}
+
+.character .stats,
+.character .skills-panel {
+	background: linear-gradient(180deg, rgba(40, 32, 24, .66) 0%, rgba(24, 19, 14, .78) 100%);
+	border: 1px solid rgba(201, 180, 126, .26);
+	border-radius: 6px;
+	box-shadow: inset 0 1px 0 rgba(255, 245, 220, .07), 0 8px 22px rgba(0, 0, 0, .28);
+	padding: 14px 18px 16px 18px;
+	margin: 0 18px 18px 0;
+	min-height: 368px;
+}
+
+.character .stats {
+	width: 320px;
+}
+
+.character .stats .row {
+	margin-left: 0;
+	margin-right: 0;
+}
+
+.character .stats .row:first-child .form-group {
+	width: 100%;
+	float: none;
+	margin: 0 0 12px 0;
+	padding: 0;
+}
+
+.character .attributes .form-group {
+	margin-left: 0;
+	margin-right: 0;
+	margin-bottom: 8px;
+}
+
+.character .attributes .form-group > .control-label {
+	width: 150px;
+	padding-left: 0;
+	font-weight: 500;
+}
+
+.character .attributes .form-group > .control-label + div {
+	width: auto;
+	padding-left: 0;
+	padding-right: 0;
+}
+
+.character .stats input[type="number"] {
+	display: inline-block;
+	width: 72px;
+	text-align: center;
+}
+
+.character .skills-panel {
+	width: 360px;
+}
+
+.skill-row {
+	margin-bottom: 8px;
+}
+
+.skill-name {
+	width: 104px;
+}
+
+/* Identity Panel aligns flush with the Panel Bar above it */
+.identity-panel {
+	margin: 0 0 18px 0;
+	width: 100%;
+	padding: 14px 18px 16px 18px;
+}
+
+.identity-panel,
+.inv-doll-panel,
+.inv-pack-panel,
+.inv-stash-panel,
+.inv-browser-panel,
+.abl-panel,
+.abl-browser-panel,
+.sh-upgrades-panel,
+.sh-numbers-panel,
+.sh-people-panel,
+.sh-residents-panel,
+.grm-books,
+.grm-book-body,
+.vnd-rail,
+.vnd-body,
+.console-repl,
+.console-reference {
+	background: linear-gradient(180deg, rgba(40, 32, 24, .66) 0%, rgba(24, 19, 14, .78) 100%);
+	border: 1px solid rgba(201, 180, 126, .26);
+	border-radius: 6px;
+	box-shadow: inset 0 1px 0 rgba(255, 245, 220, .07), 0 8px 22px rgba(0, 0, 0, .26);
+}
+
+.grm-books,
+.grm-book-body,
+.vnd-rail,
+.vnd-body {
+	padding: 12px 14px 14px 14px;
+}
+
+.console-reference {
+	padding: 14px 18px 16px 18px;
+}
+
+.identity-chip {
+	background: rgba(18, 14, 10, .55);
+	border: 1px solid rgba(201, 180, 126, .24);
+	border-radius: 5px;
+	transition: border-color .16s ease, background-color .16s ease, -webkit-transform .16s ease, transform .16s ease;
+}
+
+.identity-chip:hover {
+	background: rgba(201, 180, 126, .12);
+	border-color: rgba(201, 180, 126, .45);
+	-webkit-transform: translateY(-1px);
+	transform: translateY(-1px);
+}
+
+/* Raw & Global Variables Table Row Hover Polish */
+.main-panel > .raw > table.table > tbody > tr,
+.main-panel > .globals > table.table > tbody > tr,
+#referenceTable > tbody > tr {
+	transition: background-color .12s ease;
+}
+
+.main-panel > .raw > table.table > tbody > tr:hover,
+.main-panel > .globals > table.table > tbody > tr:hover,
+#referenceTable > tbody > tr:hover {
+	background-color: rgba(201, 180, 126, .08);
+}
+
+/* =========================================================================
+   5. SAVE SEARCH BAR, FILTER BAR & SAVE TILES
+   ========================================================================= */
+
+#searchContainer {
+	padding-top: 6px;
+}
+
+#searchContainer > form.form-inline {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	max-width: 1218px;
+	padding: 10px 16px;
+	background: linear-gradient(180deg, rgba(40, 32, 24, .66) 0%, rgba(24, 19, 14, .78) 100%);
+	border: 1px solid rgba(201, 180, 126, .26);
+	border-radius: 6px;
+	box-shadow: inset 0 1px 0 rgba(255, 245, 220, .06), 0 4px 14px rgba(0, 0, 0, .22);
+}
+
+#searchContainer > form.form-inline > .form-group {
+	display: flex;
+	align-items: center;
+	flex: 1 1 auto;
+	margin: 0;
+}
+
+label[for="savedGameLocation"] {
+	margin: 0 12px 0 0;
+	font-weight: 600;
+	color: #e8dcbc;
+	white-space: nowrap;
+}
+
+input#savedGameLocation {
+	flex: 1 1 320px;
+	width: auto;
+	min-width: 240px;
+}
+
+button#searchForSavedGames {
+	margin-left: 12px;
+	padding: 6px 18px;
+	font-weight: 600;
+}
+
+/* Real-Time Save List Filter & Sort Toolbar */
+.ek-save-filter-bar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	margin-top: 12px;
+	max-width: 1218px;
+	padding: 9px 16px;
+	background: linear-gradient(180deg, rgba(40, 32, 24, .66) 0%, rgba(24, 19, 14, .78) 100%);
+	border: 1px solid rgba(201, 180, 126, .26);
+	border-radius: 6px;
+	box-shadow: inset 0 1px 0 rgba(255, 245, 220, .06), 0 4px 14px rgba(0, 0, 0, .22);
+}
+
+.ek-save-filter-input-wrap {
+	position: relative;
+	flex: 1 1 280px;
+	margin-right: 12px;
+}
+
+.ek-save-filter-input-wrap i {
+	position: absolute;
+	left: 10px;
+	top: 8px;
+	color: #b8a888;
+	pointer-events: none;
+}
+
+.ek-save-filter-input-wrap input.form-control {
+	width: 100%;
+	height: 30px;
+	padding-left: 30px;
+	font-size: 13px;
+}
+
+.ek-save-sort-wrap {
+	display: flex;
+	align-items: center;
+	margin-right: 14px;
+}
+
+.ek-save-sort-wrap label {
+	margin: 0 8px 0 0;
+	font-size: 12px;
+}
+
+.ek-save-sort-wrap select.form-control {
+	width: 175px;
+	height: 30px;
+	padding: 3px 8px;
+	font-size: 12px;
+}
+
+.ek-save-view-toggle {
+	margin-right: 12px;
+}
+
+.ek-save-view-toggle .btn {
+	min-width: 34px;
+	border-color: rgba(201, 180, 126, .35);
+	background: rgba(20, 16, 12, .55);
+	color: #d6c9a8;
+}
+
+.ek-save-view-toggle .btn.active {
+	background: rgba(216, 181, 91, .22);
+	border-color: #d8b55b;
+	color: #f0d58a;
+}
+
+.ek-save-count {
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.ek-save-empty-filter {
+	padding: 24px 18px;
+	max-width: 600px;
+	background: linear-gradient(180deg, rgba(40, 32, 24, .62) 0%, rgba(24, 19, 14, .74) 100%);
+	border: 1px solid rgba(201, 180, 126, .26);
+	border-radius: 6px;
+	color: #d6c9a8;
+	font-size: 14px;
+}
+
+/* Save Tiles: Translucent Cards, Hover Lift & Opening Glass Overlay */
+.save-info {
+	background: linear-gradient(180deg, rgba(42, 34, 25, .70) 0%, rgba(22, 18, 13, .82) 100%);
+	border: 1px solid rgba(201, 180, 126, .28);
+	border-radius: 6px;
+	box-shadow: inset 0 1px 0 rgba(255, 245, 220, .08), 0 6px 18px rgba(0, 0, 0, .32);
+	transition: background .18s ease, border-color .18s ease, box-shadow .18s ease, -webkit-transform .18s cubic-bezier(.16, 1, .3, 1), transform .18s cubic-bezier(.16, 1, .3, 1);
+}
+
+.save-info table {
+	width: 100%;
+}
+
+.save-info .name {
+	font-size: 15px;
+	line-height: 1.35;
+}
+
+.save-info .date {
+	font-size: 12px;
+	text-align: right;
+	white-space: nowrap;
+}
+
+.save-info:hover {
+	background: linear-gradient(180deg, rgba(54, 44, 32, .80) 0%, rgba(28, 22, 16, .90) 100%);
+	border-color: rgba(201, 180, 126, .52);
+	box-shadow: inset 0 1px 0 rgba(255, 245, 220, .14), 0 10px 26px rgba(0, 0, 0, .46);
+	-webkit-transform: translateY(-2px);
+	transform: translateY(-2px);
+}
+
+.save-info.selected,
+.save-info.selected:hover {
+	background: linear-gradient(180deg, rgba(201, 180, 126, .18) 0%, rgba(36, 29, 20, .88) 100%);
+	border-color: #d8b55b;
+	box-shadow: inset 0 0 0 1px #d8b55b, 0 10px 28px rgba(0, 0, 0, .52);
+}
+
+.save-info .screenshot {
+	width: 196px;
+	overflow: hidden;
+}
+
+.save-list-details,
+.save-list-header {
+	display: none;
+}
+
+#saveBlocks.list-view {
+	display: block;
+	max-width: 1220px;
+}
+
+#saveBlocks.list-view .save-list-header,
+#saveBlocks.list-view .save-list-details {
+	display: table;
+	width: 100%;
+	table-layout: fixed;
+}
+
+#saveBlocks.list-view .save-list-header {
+	padding: 7px 14px;
+	color: #b8a888;
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .06em;
+}
+
+#saveBlocks.list-view .save-list-header span,
+#saveBlocks.list-view .save-list-details span {
+	display: table-cell;
+	padding: 3px 8px;
+	vertical-align: middle;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#saveBlocks.list-view .save-list-header span:nth-child(1),
+#saveBlocks.list-view .save-list-details span:nth-child(1) { width: 20%; }
+#saveBlocks.list-view .save-list-header span:nth-child(2),
+#saveBlocks.list-view .save-list-details span:nth-child(2) { width: 34%; }
+#saveBlocks.list-view .save-list-header span:nth-child(3),
+#saveBlocks.list-view .save-list-details span:nth-child(3) { width: 22%; }
+#saveBlocks.list-view .save-list-header span:nth-child(4),
+#saveBlocks.list-view .save-list-details span:nth-child(4) { width: 15%; }
+#saveBlocks.list-view .save-list-header span:nth-child(5),
+#saveBlocks.list-view .save-list-details span:nth-child(5) { width: 9%; }
+
+#saveBlocks.list-view .save-info {
+	display: block;
+	width: auto;
+	max-width: none;
+	margin: 0 0 4px;
+	padding: 7px 10px;
+	border-radius: 3px;
+	box-shadow: none;
+}
+
+#saveBlocks.list-view .save-info table,
+#saveBlocks.list-view .save-info > i {
+	display: none !important;
+}
+
+#saveBlocks.list-view .save-list-details {
+	font-size: 12px;
+}
+
+#saveBlocks.list-view .list-location {
+	font-weight: 600;
+}
+
+#saveBlocks.list-view .list-date {
+	color: #b8a888;
+}
+
+.save-info .screenshot img {
+	border-radius: 3px;
+	transition: -webkit-transform .24s cubic-bezier(.16, 1, .3, 1), transform .24s cubic-bezier(.16, 1, .3, 1);
+}
+
+.save-info:hover .screenshot img {
+	-webkit-transform: scale(1.03);
+	transform: scale(1.03);
+}
+
+.save-info .portraits img {
+	border-radius: 2px;
+	margin-right: 3px;
+	transition: -webkit-transform .16s ease, transform .16s ease;
+}
+
+.save-info:hover .portraits img {
+	-webkit-transform: translateY(-1px);
+	transform: translateY(-1px);
+}
+
+.save-info.ek-save-opening {
+	border-color: #e2c16b;
+	-webkit-animation: ekPulseGlow 1.4s ease-in-out infinite;
+	animation: ekPulseGlow 1.4s ease-in-out infinite;
+}
+
+.ek-opening-badge {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+	padding: 3px 10px;
+	border-radius: 12px;
+	background: rgba(20, 16, 12, .90);
+	border: 1px solid rgba(216, 181, 91, .65);
+	color: #f0d58a;
+	font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+	font-size: 11.5px;
+	font-weight: 600;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, .45);
+	pointer-events: none;
+}
+
+.ek-opening-badge i {
+	position: static !important;
+	display: inline-block !important;
+	margin-right: 5px;
+}
+
+/* =========================================================================
+   6. BACKUP BADGE, PROGRESS SHIMMER, ERROR BANNERS & MODAL DIALOG POLISH
+   ========================================================================= */
+
+.ek-backup-badge {
+	margin-top: 10px;
+	padding: 8px 10px;
+	border-radius: 4px;
+	background: rgba(201, 162, 39, .10);
+	border: 1px solid rgba(201, 180, 126, .30);
+	font-size: 12px;
+	line-height: 1.45;
+	color: #e0d3b4;
+}
+
+.ek-backup-badge i {
+	color: #d8b55b;
+	margin-right: 6px;
+}
+
+/* Animated I/O Progress Bar with Shimmer */
+#progress {
+	height: 4px;
+	background: transparent;
+	pointer-events: none;
+}
+
+#progress div {
+	height: 4px;
+	transition: width .28s cubic-bezier(.16, 1, .3, 1), opacity .25s ease;
+}
+
+#progress.ek-progress-active div {
+	background: linear-gradient(90deg, #b89852 0%, #f3d98b 50%, #b89852 100%);
+	background-size: 200% 100%;
+	box-shadow: 0 0 12px rgba(243, 217, 139, .75);
+	-webkit-animation: ekProgressShimmer 1.4s linear infinite;
+	animation: ekProgressShimmer 1.4s linear infinite;
+}
+
+/* Dismissible Error Banner Polish */
+#error .alert-danger {
+	position: relative;
+	padding: 10px 34px 10px 14px;
+	background: linear-gradient(180deg, rgba(140, 38, 46, .92) 0%, rgba(98, 24, 30, .96) 100%);
+	color: #f8e6e8;
+	border: 1px solid rgba(230, 110, 120, .55);
+	border-left: 3px solid #f27b86;
+	border-radius: 5px;
+	box-shadow: 0 6px 20px rgba(0, 0, 0, .42);
+	font-weight: 500;
+}
+
+#error .alert-danger .ek-error-close {
+	position: absolute;
+	top: 6px;
+	right: 10px;
+	background: transparent;
+	border: none;
+	color: #f8e6e8;
+	opacity: .75;
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+#error .alert-danger .ek-error-close:hover {
+	opacity: 1;
+	color: #fff;
+}
+
+/* Modals: Translucent Obsidian Glass, Comfortable Sizing & Smooth Entrance */
+.modal-backdrop.in {
+	opacity: .68;
+}
+
+/* Give small modals enough breathing room for long save filenames and paths */
+.modal-dialog.modal-sm {
+	width: 420px;
+	max-width: calc(100% - 32px);
+}
+
+#saveChangesDialog .modal-body .container-fluid {
+	margin-top: 16px;
+	padding: 12px 0 0 0;
+	border-top: 1px solid rgba(201, 180, 126, .22);
+}
+
+#saveChangesDialog .modal-body .row {
+	margin: 0;
+	text-align: right;
+}
+
+#dontSaveChanges,
+#saveChanges {
+	float: none;
+	min-width: 78px;
+	margin-left: 8px;
+}
+
+.modal.fade .modal-dialog {
+	-webkit-transform: translate3d(0, 14px, 0) scale(0.97);
+	transform: translate3d(0, 14px, 0) scale(0.97);
+	transition: -webkit-transform .22s cubic-bezier(.16, 1, .3, 1), transform .22s cubic-bezier(.16, 1, .3, 1), opacity .22s ease;
+}
+
+.modal.in .modal-dialog {
+	-webkit-transform: translate3d(0, 0, 0) scale(1);
+	transform: translate3d(0, 0, 0) scale(1);
+}
+
+.modal-content,
+.pm-content {
+	background: linear-gradient(165deg, rgba(48, 39, 29, .95) 0%, rgba(31, 25, 19, .97) 60%, rgba(22, 18, 13, .98) 100%);
+	-webkit-backdrop-filter: blur(14px);
+	backdrop-filter: blur(14px);
+	border: 1px solid rgba(201, 180, 126, .36);
+	border-radius: 8px;
+	box-shadow: inset 0 1px 0 rgba(255, 245, 220, .12), 0 18px 48px rgba(0, 0, 0, .75);
+}
+
+/* Interactive Button Micro-Interactions */
+.btn,
+.pm-btn,
+.save-fab,
+.history-fab {
+	transition: background .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease, -webkit-transform .14s ease, transform .14s ease;
+}
+
+.btn:hover:not([disabled]),
+.pm-btn:hover:not([disabled]),
+.save-fab:hover:not([disabled]),
+.history-fab:hover:not([disabled]) {
+	-webkit-transform: translateY(-1px);
+	transform: translateY(-1px);
+}
+
+.btn:active:not([disabled]),
+.pm-btn:active:not([disabled]),
+.save-fab:active:not([disabled]),
+.history-fab:active:not([disabled]) {
+	-webkit-transform: translateY(0) scale(0.98);
+	transform: translateY(0) scale(0.98);
+}
+
+/* =========================================================================
+   7. LIGHT THEME OVERRIDES ("WARM PARCHMENT GLASS" — body.theme-light)
+   ========================================================================= */
+
+body.theme-light {
+	background-color: #efe6cf;
+	background-image: linear-gradient(160deg, #f5eedc 0%, #ede2c8 55%, #e4d6b7 100%);
+	background-attachment: fixed;
+}
+
+body.theme-light .navbar-inverse {
+	background: linear-gradient(180deg, rgba(246, 238, 220, .92) 0%, rgba(233, 222, 198, .96) 100%);
+	border-bottom-color: rgba(107, 56, 18, .24);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65), 0 4px 16px rgba(74, 55, 30, .12);
+}
+
+body.theme-light .navbar-inverse .navbar-nav > li.ek-nav-active > a,
+body.theme-light .navbar-inverse .navbar-nav > li.ek-nav-active > a:hover,
+body.theme-light .navbar-inverse .navbar-nav > li.ek-nav-active > a:focus {
+	color: #3a230b;
+	background: linear-gradient(180deg, rgba(168, 121, 47, .08) 0%, rgba(168, 121, 47, .20) 100%);
+	box-shadow: inset 0 -2px 0 #8a6410;
+}
+
+body.theme-light .sidebar {
+	background: linear-gradient(180deg, rgba(238, 228, 206, .82) 0%, rgba(228, 216, 190, .90) 100%);
+	border-right-color: rgba(107, 56, 18, .22);
+	box-shadow: inset -1px 0 0 rgba(255, 255, 255, .45), 4px 0 14px rgba(74, 55, 30, .08);
+}
+
+body.theme-light .panel-bar,
+body.theme-light #searchContainer > form.form-inline,
+body.theme-light .character .stats,
+body.theme-light .character .skills-panel,
+body.theme-light .identity-panel,
+body.theme-light .inv-doll-panel,
+body.theme-light .inv-pack-panel,
+body.theme-light .inv-stash-panel,
+body.theme-light .inv-browser-panel,
+body.theme-light .abl-panel,
+body.theme-light .abl-browser-panel,
+body.theme-light .sh-upgrades-panel,
+body.theme-light .sh-numbers-panel,
+body.theme-light .sh-people-panel,
+body.theme-light .sh-residents-panel,
+body.theme-light .grm-books,
+body.theme-light .grm-book-body,
+body.theme-light .vnd-rail,
+body.theme-light .vnd-body,
+body.theme-light .console-repl,
+body.theme-light .console-reference {
+	background: linear-gradient(180deg, rgba(255, 252, 244, .82) 0%, rgba(245, 236, 218, .90) 100%);
+	border-color: rgba(107, 56, 18, .24);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, .75), 0 6px 18px rgba(74, 55, 30, .09);
+}
+
+body.theme-light label[for="savedGameLocation"] {
+	color: #2c1e0f;
+}
+
+body.theme-light .identity-chip {
+	background: rgba(255, 252, 245, .86);
+	border-color: rgba(107, 56, 18, .24);
+}
+
+body.theme-light .identity-chip:hover {
+	background: rgba(201, 162, 39, .14);
+	border-color: rgba(138, 100, 16, .45);
+}
+
+body.theme-light body.theme-light .ek-save-sort-wrap label,
+body.theme-light .ek-save-count,
+body.theme-light .save-info .date,
+body.theme-light .panel-bar-hint,
+body.theme-light .panel-bar-note,
+body.theme-light .raw-unnamed,
+body.theme-light .inv-slot-label,
+body.theme-light .inv-sub-label,
+body.theme-light .inv-count,
+body.theme-light .inv-weapon-index,
+body.theme-light .inv-browse-target,
+body.theme-light .inv-browse-pager,
+body.theme-light .inv-browse-page,
+body.theme-light .inv-carry-hint,
+body.theme-light .skill-points,
+body.theme-light .skills-remaining,
+body.theme-light .skills-note,
+body.theme-light .identity-hint,
+body.theme-light .identity-effect-note,
+body.theme-light .identity-sheet-head,
+body.theme-light .identity-chip-name,
+body.theme-light .identity-chip-parts,
+body.theme-light .abl-character-meta,
+body.theme-light .abl-count,
+body.theme-light .abl-meta,
+body.theme-light .abl-empty,
+body.theme-light .abl-any-class,
+body.theme-light .abl-browse-pager,
+body.theme-light .abl-browse-page,
+body.theme-light .abl-detail-empty,
+body.theme-light .abl-detail-meta,
+body.theme-light .abl-detail-label,
+body.theme-light .abl-detail-prefab,
+body.theme-light .sh-turn,
+body.theme-light .sh-count,
+body.theme-light .sh-upgrade-desc,
+body.theme-light .sh-upgrade-cost,
+body.theme-light .sh-empty,
+body.theme-light .sh-gauge i,
+body.theme-light .sh-gauge-label,
+body.theme-light .sh-gauge-delta,
+body.theme-light .sh-number label,
+body.theme-light .sh-resident-label,
+body.theme-light .sh-resident-note,
+body.theme-light .sh-person-detail,
+body.theme-light .sh-person-empty,
+body.theme-light .sh-status,
+body.theme-light .sh-unavailable p,
+body.theme-light .sh-unavailable-note,
+body.theme-light .grm-unavailable p,
+body.theme-light .grm-note,
+body.theme-light .grm-books-head,
+body.theme-light .grm-books-count,
+body.theme-light .grm-browse-head,
+body.theme-light .grm-book-where,
+body.theme-light .grm-book-count,
+body.theme-light .grm-browse-level,
+body.theme-light .grm-browse-empty,
+body.theme-light .grm-browse-subtitle,
+body.theme-light .grm-chapter-count,
+body.theme-light .vnd-rail-head,
+body.theme-light .vnd-rail-count,
+body.theme-light .vnd-rail-option,
+body.theme-light .vnd-vendor-where,
+body.theme-light .vnd-vendor-count,
+body.theme-light .vnd-meta,
+body.theme-light .vnd-grid-empty,
+body.theme-light .vnd-legend,
+body.theme-light .vnd-detail,
+body.theme-light .vnd-detail-hint,
+body.theme-light .console-achievements-note,
+body.theme-light .console-reference-subtitle {
+	color: #544024;
+}
+
+body.theme-light .panel-bar-note-on {
+	color: #8a4b12;
+}
+
+body.theme-light .ek-save-filter-bar,
+body.theme-light .ek-save-empty-filter {
+	background: linear-gradient(180deg, rgba(255, 252, 244, .82) 0%, rgba(245, 236, 218, .90) 100%);
+	border-color: rgba(107, 56, 18, .24);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, .70), 0 4px 12px rgba(74, 55, 30, .08);
+	color: #4a3c28;
+}
+
+body.theme-light .ek-save-filter-input-wrap i {
+	color: #6b5638;
+}
+
+body.theme-light .save-info {
+	background: linear-gradient(180deg, rgba(255, 252, 244, .86) 0%, rgba(244, 235, 216, .92) 100%);
+	border-color: rgba(107, 56, 18, .26);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, .80), 0 6px 16px rgba(74, 55, 30, .10);
+}
+
+body.theme-light .save-info:hover {
+	background: linear-gradient(180deg, rgba(255, 253, 248, .95) 0%, rgba(246, 236, 214, .97) 100%);
+	border-color: rgba(138, 100, 16, .55);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, .90), 0 10px 24px rgba(74, 55, 30, .16);
+}
+
+body.theme-light .save-info.selected,
+body.theme-light .save-info.selected:hover {
+	background: linear-gradient(180deg, rgba(201, 162, 39, .18) 0%, rgba(248, 238, 214, .95) 100%);
+	border-color: #8a6410;
+	box-shadow: inset 0 0 0 1px #8a6410, 0 10px 24px rgba(74, 55, 30, .18);
+}
+
+body.theme-light #saveBlocks.list-view .save-list-header,
+body.theme-light #saveBlocks.list-view .list-date {
+	color: #6b5638;
+}
+
+body.theme-light .ek-save-view-toggle .btn {
+	background: #fffaf0;
+	border-color: rgba(107, 56, 18, .32);
+	color: #4a3c28;
+}
+
+body.theme-light .ek-save-view-toggle .btn.active {
+	background: #ead9a9;
+	border-color: #8a6410;
+	color: #2c1e0f;
+}
+
+body.theme-light .ek-save-filter-input-wrap input.form-control,
+body.theme-light .ek-save-sort-wrap select.form-control {
+	background: #fff;
+	border-color: rgba(107, 56, 18, .32);
+	color: #2c1e0f;
+	box-shadow: none;
+}
+
+/* =========================================================================
+   8. REDUCED MOTION ACCESSIBILITY GUARD
+   ========================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+	.ek-view-enter,
+	.ek-char-switch,
+	.ek-tile-enter,
+	.ek-fab-enter,
+	.ek-alert-enter,
+	#progress.ek-progress-active div,
+	.save-info.ek-save-opening {
+		-webkit-animation: none !important;
+		animation: none !important;
+	}
+}

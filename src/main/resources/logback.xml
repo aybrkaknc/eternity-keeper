@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+	<!-- In the user data folder (see AppPaths), not wherever the app was started from. -->
+	<define name="EK_LOG" class="uk.me.mantas.eternity.environment.LogFileLocation"/>
+
 	<appender name="stderr" class="ch.qos.logback.core.ConsoleAppender">
 		<encoder>
 			<pattern>%message</pattern>
@@ -7,7 +10,7 @@
 	</appender>
 
 	<appender name="eternity" class="ch.qos.logback.core.FileAppender">
-		<file>eternity.log</file>
+		<file>${EK_LOG}</file>
 		<append>true</append>
 		<encoder>
 			<pattern>%message</pattern>

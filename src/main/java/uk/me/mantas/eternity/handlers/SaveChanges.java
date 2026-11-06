@@ -21,10 +21,12 @@ package uk.me.mantas.eternity.handlers;
 import org.cef.browser.CefBrowser;
 import org.cef.callback.CefQueryCallback;
 import org.cef.handler.CefMessageRouterHandlerAdapter;
+import org.json.JSONException;
 import org.json.JSONStringer;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.save.ChangesSaver;
+import uk.me.mantas.eternity.save.SaveWriteCommand;
 
 public class SaveChanges extends CefMessageRouterHandlerAdapter {
 	private static final Logger logger = Logger.getLogger(SaveChanges.class);
@@ -33,8 +35,15 @@ public class SaveChanges extends CefMessageRouterHandlerAdapter {
 	public boolean onQuery(
 			CefBrowser browser, long id, String request, boolean persistent, CefQueryCallback callback) {
 
-		Environment.getInstance().workers().execute(
-				new ChangesSaver(request, callback));
+		final SaveWriteCommand command;
+		try {
+			command = new SaveWriteRequestAdapter().parse(request);
+		} catch (final JSONException e) {
+			callback.failure(-1, jsonError());
+			return true;
+		}
+		Environment.getInstance().mutationWorker().execute(Answered.to(callback
+				, new ChangesSaver(command, callback)));
 
 		return true;
 	}

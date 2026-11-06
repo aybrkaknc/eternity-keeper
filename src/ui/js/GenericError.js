@@ -27,11 +27,18 @@ var GenericError = function () {
 	self.html = {};
 	self.render = newState => {
 		self.state = $.extend({}, defaultState, newState);
-		if (self.state.msg.length > 0) {
-			self.html.error.show();
-			self.html.error.find('div').text(self.state.msg);
+		var alertBox = self.html.error.find('div');
+		if (self.state.msg && self.state.msg.length > 0) {
+			alertBox.empty()
+				.append($('<i class="fa fa-exclamation-circle">').css('margin-right', '8px'))
+				.append($('<span>').text(self.state.msg))
+				.append(
+					$('<button type="button" class="ek-error-close" title="Dismiss">&times;</button>')
+						.click(() => self.render({msg: ''})));
+			self.html.error.removeClass('ek-alert-enter').show().addClass('ek-alert-enter');
 		} else {
-			self.html.error.hide();
+			alertBox.empty();
+			self.html.error.removeClass('ek-alert-enter').hide();
 		}
 	};
 };

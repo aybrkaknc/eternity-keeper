@@ -1,0 +1,65 @@
+name: Bug report
+description: Something in the editor went wrong, or an edited save misbehaves in the game.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Please attach `eternity.log`**: it is in
+        `%APPDATA%\Eternity Keeper`, and the editor's Settings dialog shows the
+        exact path. It records what the editor did and any error it hit.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, step by step, what you expected, and what happened instead.
+      placeholder: |
+        1. Opened my Caed Nua save
+        2. Moved a sword from Eder's pack to the stash and pressed Apply
+        3. Expected the sword in the stash; the stash was empty
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: eternity.log
+      description: Drag the file here. `%APPDATA%\Eternity Keeper\eternity.log`
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Eternity Keeper version
+      description: From the download's file name, e.g. 1.0.0-beta
+    validations:
+      required: true
+
+  - type: dropdown
+    id: store
+    attributes:
+      label: Where your game is from
+      options:
+        - Steam
+        - GOG
+        - Epic
+        - Microsoft Store / Game Pass
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: game-version
+    attributes:
+      label: Game version
+      description: Shown on the game's main menu, e.g. 3.9.5
+
+  - type: textarea
+    id: save
+    attributes:
+      label: The save (optional, but it helps most)
+      description: |
+        Zip the `.savegame` file and attach it. Saves are in
+        `%USERPROFILE%\Saved Games\Pillars of Eternity`.

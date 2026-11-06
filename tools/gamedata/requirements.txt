@@ -1,0 +1,8 @@
+# The game-data reader (extract_gamedata.py).
+UnityPy==1.25.2
+# Shapes the MonoBehaviours the stronghold and identity stages read, from the
+# game's own Assembly-CSharp.dll.
+TypeTreeGeneratorAPI==0.0.10
+
+# Only to freeze it for a release (tools/release/build-release.ps1).
+pyinstaller==6.22.3

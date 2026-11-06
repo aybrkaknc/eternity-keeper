@@ -8,3 +8,16 @@ settings.json
 **/maven-metadata*
 jar
 hs_err_*.log
+
+# Stale build output and IDE state
+bin/
+.vs/
+
+# What the editor writes into its data folder when run.bat points it at the checkout
+/cef.log
+/gamedata/
+/gamedata.new/
+/gamedata.old/
+
+# Python bytecode (the UI suites and the game-data reader)
+__pycache__/

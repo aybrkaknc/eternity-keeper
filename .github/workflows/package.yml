@@ -1,0 +1,118 @@
+# The Windows release, built on a machine that has none of what the development
+# setup has: the zip, the installer, and a test that installs the installer,
+# starts the editor from it and uninstalls it again.
+#
+# Runs when the packaging itself changes, when asked for by hand, and for a tag
+# named v* -- which has to be "v" and the version in pom.xml. Once a tag's
+# build and installer test have passed here, its zip and installer are
+# attached to a draft release, with its page written by
+# tools/release/release-notes.ps1 (a pre-release for a version with a hyphen,
+# like 1.0.0-beta), to be checked and published by hand from the Releases
+# page. GitHub does not apply the paths below to a tag push: a tag always
+# builds.
+#
+# The game-data reader counts as packaging: the release carries it frozen by
+# PyInstaller, which has to be told about anything it imports, and a frozen
+# reader once wrote every catalog and not one icon.
+name: Package
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+    paths:
+      - 'tools/release/**'
+      - 'tools/gamedata/**'
+      - '.github/workflows/package.yml'
+      - 'pom.xml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    # The whole job takes about five minutes. Without a limit of its own, a
+    # step waiting for an answer nobody is there to give holds the machine for
+    # six hours.
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Java 8: the embedded browser's natives are Java 8 era, and the jar
+      # targets it. The JDK's own jre\ folder is what ships.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          java-package: jdk
+          architecture: x64
+          cache: maven
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Game-data reader packages
+        run: python -m pip install -r tools/gamedata/requirements.txt
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+
+      # With the tests: a release is never built from code they fail on.
+      - name: Build the zip and the installer
+        shell: pwsh
+        run: ./tools/release/build-release.ps1 -Jdk $env:JAVA_HOME -RequireInstaller
+
+      # Logs need a GitHub sign-in to read; annotations do not.
+      - name: Report failing tests
+        if: failure()
+        run: python .github/scripts/test_failures.py
+
+      # -DefaultFolder: also where setup puts the editor when nobody says, which
+      # is what nearly every user gets. This machine has nothing there to lose.
+      - name: Install it, start it, upgrade it, uninstall it
+        shell: pwsh
+        run: ./tools/release/test-installer.ps1 -Setup (Get-Item target/release/*-setup.exe).FullName -DefaultFolder
+
+      # The release's page: how to install it, then the version's section of
+      # CHANGELOG.md. Written on every run, so that a page that cannot be
+      # written shows before a tag does. For a tag it also checks that the tag
+      # names pom.xml's version, and hands over the release's name. After the
+      # build: mvn clean empties target.
+      - name: Release notes
+        id: notes
+        shell: pwsh
+        run: ./tools/release/release-notes.ps1 -Out target/release-notes.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eternity-keeper-windows
+          retention-days: 14
+          compression-level: 0
+          path: |
+            target/release/*.zip
+            target/release/*-setup.exe
+            target/release/*.sha256
+
+      # A draft, which only people with write access to the repository can see
+      # until one of them publishes it.
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          draft: true
+          name: ${{ steps.notes.outputs.name }}
+          body_path: target/release-notes.md
+          prerelease: ${{ steps.notes.outputs.prerelease }}
+          fail_on_unmatched_files: true
+          files: |
+            target/release/*.zip
+            target/release/*-setup.exe
+            target/release/*.sha256

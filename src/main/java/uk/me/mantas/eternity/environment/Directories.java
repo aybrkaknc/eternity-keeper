@@ -27,22 +27,13 @@ import java.io.IOException;
 public class Directories {
 	private static final Logger logger = Logger.getLogger(Directories.class);
 
-	private final File root = new File(".");
-	private final File jar = new File("jar");
-	private final File ui = new File("src");
-	private File settingsFile = new File(".", "settings.json");
+	private final AppPaths paths = AppPaths.forThisProcess();
+	private File settingsFile = paths.settingsFile();
 	private File working = new File(System.getProperty("java.io.tmpdir"), "EK-unpacked-saves");
 
-	public File root() {
-		return root;
-	}
-
-	public File jar() {
-		return jar;
-	}
-
-	public File ui() {
-		return ui;
+	/** Where the app's own files and the user's data live; see {@link AppPaths}. */
+	public AppPaths paths() {
+		return paths;
 	}
 
 	public File settingsFile() {

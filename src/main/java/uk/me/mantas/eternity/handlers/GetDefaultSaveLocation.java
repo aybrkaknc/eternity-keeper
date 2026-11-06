@@ -28,10 +28,14 @@ import org.json.JSONStringer;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.Settings;
 import uk.me.mantas.eternity.environment.Environment;
+import uk.me.mantas.eternity.environment.GameLocator;
+import uk.me.mantas.eternity.save.GameText;
 
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import static uk.me.mantas.eternity.environment.Variables.Key.*;
@@ -79,11 +83,24 @@ public class GetDefaultSaveLocation extends CefMessageRouterHandlerAdapter {
 					defaultSaveLocation = defaultLocation.toString();
 				}
 			} else if (home.isPresent()) {
-				final Path defaultLocation =
-					Paths.get(home.get()).resolve(".local/share").resolve(linuxSaves);
+				// Linux first, then macOS. Both hang off HOME, and the two
+				// layouts cannot be confused for one another, so trying each in
+				// turn costs nothing.
+				//
+				// The macOS paths come from the roadmap's own note rather than
+				// from a machine -- there is no Mac here to check them on, and
+				// the app cannot start there yet anyway (no JCEF native
+				// bundle). Both spellings are tried for that reason.
+				for (final String candidate : new String[]{
+					".local/share/" + linuxSaves
+					, "Library/Application Support/Pillars of Eternity/SavedGames"
+					, "Library/Application Support/Pillars of Eternity"}) {
 
-				if (defaultLocation.toFile().exists()) {
-					defaultSaveLocation = defaultLocation.toString();
+					final Path defaultLocation = Paths.get(home.get()).resolve(candidate);
+					if (defaultLocation.toFile().exists()) {
+						defaultSaveLocation = defaultLocation.toString();
+						break;
+					}
 				}
 			}
 		}
@@ -92,58 +109,53 @@ public class GetDefaultSaveLocation extends CefMessageRouterHandlerAdapter {
 			defaultSaveLocation = "";
 		}
 
+		// The saves were never the hard part -- every desktop store puts them
+		// in the same folder. Finding the install is, and GameLocator does it
+		// across every drive and every store rather than the system drive and
+		// four hardcoded paths.
+		final List<String> notes = new ArrayList<>();
 		if (defaultGameLocation == null || defaultGameLocation.length() < 1) {
-			final Optional<String> systemDrive = environment.variables().get(SYSTEMDRIVE);
-			final Optional<String> home = environment.variables().get(HOME);
-			Optional<File> foundLocation = Optional.empty();
+			final GameLocator.Result located = GameLocator.getInstance().locate();
+			notes.addAll(located.notes);
 
-			if (systemDrive.isPresent()) {
-				final Path root = Paths.get(systemDrive.get());
-				foundLocation = searchLikelyLocations(root.toFile());
-			} else if (home.isPresent()) {
-				final Path defaultLocation =
-					Paths.get(home.get())
-						.resolve(".steam/steam/SteamApps/common/Pillars of Eternity");
-
-				if (defaultLocation.toFile().exists()) {
-					foundLocation = Optional.of(defaultLocation.toFile());
-				}
-			}
-
-			if (foundLocation.isPresent()) {
-				defaultGameLocation = foundLocation.get().getAbsolutePath();
+			if (located.installation.isPresent()) {
+				defaultGameLocation = located.installation.get().getAbsolutePath();
 			}
 		}
 
 		if (defaultGameLocation == null) {
 			defaultGameLocation = "";
 		} else {
+			final boolean found = !defaultGameLocation.equals(settings.optString("gameLocation", ""));
 			settings.put("gameLocation", defaultGameLocation);
-		}
 
-		callback.success(foundDefault(defaultSaveLocation, defaultGameLocation));
-		return true;
-	}
-
-	private Optional<File> searchLikelyLocations (final File systemDrive) {
-		final Environment environment = Environment.getInstance();
-		for (final String possibleLocation : environment.config().possibleInstallationLocations()) {
-			final File resolvedLocation = new File(systemDrive, possibleLocation);
-			if (resolvedLocation.exists()) {
-				return Optional.of(resolvedLocation);
+			// The game's names are read once and kept, out of the install that
+			// settings name: whatever asked before this one was found was told
+			// there is none.
+			if (found) {
+				GameText.startAgain();
 			}
 		}
 
-		return Optional.empty();
+		callback.success(foundDefault(defaultSaveLocation, defaultGameLocation, notes));
+		return true;
 	}
 
-	private String foundDefault (final String savesLocation, final String gameLocation) {
-		return new JSONStringer()
-			.object()
-				.key("savesLocation").value(savesLocation)
-				.key("gameLocation").value(gameLocation)
-			.endObject()
-			.toString();
+	private String foundDefault (
+		final String savesLocation, final String gameLocation, final List<String> notes) {
+
+		final JSONStringer json = new JSONStringer();
+		json.object()
+			.key("savesLocation").value(savesLocation)
+			.key("gameLocation").value(gameLocation)
+			.key("notes").array();
+
+		for (final String note : notes) {
+			json.value(note);
+		}
+
+		json.endArray().endObject();
+		return json.toString();
 	}
 
 	@Override

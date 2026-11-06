@@ -19,6 +19,8 @@
 
 package uk.me.mantas.eternity.serializer;
 
+import java.util.Objects;
+
 public class TypePair {
 	public Class type;
 	public String cSharpType;
@@ -28,13 +30,21 @@ public class TypePair {
 		this.cSharpType = cSharpType;
 	}
 
+	// cSharpType is legitimately null for some properties -- PartyManager builds
+	// a Variables dictionary with one -- and comparing such a pair used to
+	// throw. hashCode was also missing, so equal pairs hashed apart.
 	@Override
-	public boolean equals (Object obj) {
+	public boolean equals (final Object obj) {
 		if (!(obj instanceof TypePair)) {
 			return false;
 		}
 
-		TypePair other = (TypePair) obj;
-		return other.type == type && other.cSharpType.equals(cSharpType);
+		final TypePair other = (TypePair) obj;
+		return other.type == type && Objects.equals(other.cSharpType, cSharpType);
+	}
+
+	@Override
+	public int hashCode () {
+		return Objects.hash(type, cSharpType);
 	}
 }

@@ -23,10 +23,19 @@ import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.Settings;
 import uk.me.mantas.eternity.environment.*;
 import uk.me.mantas.eternity.factory.SharpSerializerFactory;
+import uk.me.mantas.eternity.save.AbilityCatalog;
+import uk.me.mantas.eternity.save.ItemCatalog;
+import uk.me.mantas.eternity.save.GameText;
+import uk.me.mantas.eternity.environment.GameLanguage;
+import uk.me.mantas.eternity.environment.GameLocator;
+import uk.me.mantas.eternity.save.IdentityCatalog;
+import uk.me.mantas.eternity.save.PortraitCatalog;
+import uk.me.mantas.eternity.save.StrongholdCatalog;
 import uk.me.mantas.eternity.serializer.SerializerFormat;
 import uk.me.mantas.eternity.serializer.SharpSerializer;
 
@@ -36,7 +45,10 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -53,36 +65,67 @@ public abstract class TestHarness {
 		Locale.setDefault(Locale.UK);
 	}
 
+	// What was in temp before the test, so cleanup removes only what the test
+	// made. Deleting every EK- folder also deleted a running editor's unpacked
+	// saves and its working copy, so running the tests with the editor open
+	// broke the editor: its next Apply could not find the save.
+	private Set<String> preexisting = Collections.emptySet();
+
+	private static File[] ours () {
+		final File[] files = new File(System.getProperty("java.io.tmpdir"))
+			.listFiles((dir, name) -> name.startsWith(PREFIX));
+
+		return files == null ? new File[0] : files;
+	}
+
 	@Before
 	public void setup () {
+		preexisting = Arrays.stream(ours()).map(File::getName).collect(Collectors.toSet());
+
+		// The app keeps its settings and log in %APPDATA%\Eternity Keeper, so
+		// without this every test that reached Settings created that folder
+		// for real and wrote into the user's own editor. An EK- folder made
+		// after the snapshot above is deleted by cleanup with everything else.
+		System.setProperty(AppPaths.DATA_PROPERTY
+			, EKUtils.createTempDir(PREFIX).get().getAbsolutePath());
 		Environment.initialise();
 		Settings.clear();
+
+		// Item and ability names and icons are read from the user's own game install, so
+		// tests pin them off — otherwise extraction output would differ
+		// between a machine with a game installed and one without.
+		ItemCatalog.useNoCatalog();
+		AbilityCatalog.useNoCatalog();
+		StrongholdCatalog.useNoCatalog();
+		IdentityCatalog.useNoCatalog();
+		PortraitCatalog.useNoCatalog();
+		GameText.useNoText();
+		GameLocator.useNoGame();
+		GameLanguage.useNoSetting();
 	}
 
 	@After
 	public void cleanup () {
-		File temp = new File(System.getProperty("java.io.tmpdir"));
-		File[] files = temp.listFiles();
+		// The real environment is a singleton, so a private copy one test's
+		// edit made would otherwise still be the live save in the next.
+		Environment.getInstance().state().workingSave().opening();
 
-		if (files != null) {
-			Arrays.stream(files)
-				.filter((file) -> file.getName().startsWith(PREFIX))
-				.forEach((file) -> {
-					if (file.isDirectory()) {
-						try {
-							FileUtils.deleteDirectory(file);
-						} catch (IOException e) {
-							System.err.printf(
-								"Unable to delete temporary directory '%s': "
-									+ "%s%n"
-								, file.getAbsoluteFile()
-								, e.getMessage());
-						}
-					} else {
-						assertTrue(file.delete());
+		Arrays.stream(ours())
+			.filter(file -> !preexisting.contains(file.getName()))
+			.forEach(file -> {
+				if (file.isDirectory()) {
+					try {
+						FileUtils.deleteDirectory(file);
+					} catch (IOException e) {
+						System.err.printf(
+							"Unable to delete temporary directory '%s': %s%n"
+							, file.getAbsoluteFile()
+							, e.getMessage());
 					}
-				});
-		}
+				} else {
+					assertTrue(file.delete());
+				}
+			});
 	}
 
 	protected static Environment mockEnvironment () {
@@ -116,8 +159,12 @@ public abstract class TestHarness {
 		when(mockEnvironment.directory()).thenReturn(mockDirectories);
 		when(mockEnvironment.factory()).thenReturn(mockFactory);
 		when(mockEnvironment.state()).thenReturn(mockState);
+		final UnpackedSaves unpacked = new UnpackedSaves();
+		when(mockState.unpacked()).thenReturn(unpacked);
+		when(mockState.workingSave()).thenReturn(new WorkingSave(unpacked));
 		when(mockEnvironment.variables()).thenReturn(mockVariables);
 		when(mockEnvironment.workers()).thenReturn(environment.workers());
+		when(mockEnvironment.mutationWorker()).thenReturn(environment.mutationWorker());
 
 		return mockEnvironment;
 	}

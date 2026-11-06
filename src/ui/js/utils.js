@@ -59,3 +59,67 @@ function flattenObject (obj, levels) {
 
 	return results;
 }
+
+// Who a character is *right now*, rather than who they were when the save was
+// opened.
+//
+// The opener derives a few things from CharacterStats server-side and ships
+// them as a snapshot: which equipment slots a character has, what class the
+// ability browser should offer from. The Identity panel edits those same stats
+// live, so the snapshot goes stale the moment someone changes a class -- the
+// Inventory tab would keep offering a grimoire slot to a character who is no
+// longer a wizard, and the Abilities tab would keep offering a paladin's
+// talents to a cipher. These read the live values instead.
+
+function liveStat (character, key) {
+	if (!character || !character.stats || !character.stats[key]) {
+		return '';
+	}
+
+	var value = character.stats[key].value;
+	return value === null || value === undefined ? '' : String(value);
+}
+
+/**
+ * Equipment.HasEquipmentSlot's rules, for the two it lets identity change.
+ *
+ * Head exists for anyone who is not Godlike and Grimoire only for a wizard;
+ * Pet is only on the Player object, which no edit can move, so that one is
+ * taken from the server's list as it stands. Nothing repairs an item left in
+ * a slot that stops existing -- RepairSaveLoadEquipmentErrors handles the
+ * deprecated Cape and locked slots only -- which is why the character panel
+ * warns about stranded gear rather than moving it.
+ */
+function unavailableSlotsNow (character, serverList) {
+	var out = (serverList || []).filter(
+		slot => slot !== 'Head' && slot !== 'Grimoire');
+
+	if (liveStat(character, 'CharacterRace') === 'Godlike') {
+		out.push('Head');
+	}
+
+	if (liveStat(character, 'CharacterClass') !== 'Wizard') {
+		out.push('Grimoire');
+	}
+
+	return out;
+}
+
+/**
+ * How Undo names an Apply: "Inventory: 3 changes", "Abilities for Aloth:
+ * 1 change". `whose` lists the GUIDs of the characters the changes were
+ * for; two or more names are left out rather than run on.
+ */
+function appliedLabel (what, count, whose) {
+	var characters = ((Eternity.SavedGame.state.saveData || {}).characters || []);
+	var names = [];
+	(whose || []).forEach(guid => {
+		var character = characters.filter(c => c.GUID === guid)[0];
+		if (character && character.name && names.indexOf(character.name) < 0) {
+			names.push(character.name);
+		}
+	});
+
+	return what + (names.length === 1 ? ' for ' + names[0] : '')
+		+ ': ' + count + (count === 1 ? ' change' : ' changes');
+}

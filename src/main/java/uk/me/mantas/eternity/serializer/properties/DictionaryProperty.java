@@ -60,7 +60,7 @@ public class DictionaryProperty extends ComplexProperty {
 	@SuppressWarnings("unchecked")
 	public <T extends Property> Optional<T> findEntry (final Object needle) {
 		final Optional<Entry<Property, Property>> found = items.stream()
-			.filter(entry -> entry != null)
+			.filter(entry -> entry != null && entry.getKey() != null && entry.getKey().obj != null)
 			.filter(entry -> entry.getKey().obj.equals(needle))
 			.findFirst();
 

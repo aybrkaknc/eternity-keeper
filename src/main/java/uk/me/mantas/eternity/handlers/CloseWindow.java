@@ -46,6 +46,8 @@ public class CloseWindow extends CefMessageRouterHandlerAdapter {
 		, final CefQueryCallback callback) {
 
 		// Need to close the window in a separate thread otherwise we deadlock.
+		// Answered first, so this is the one piece of work handed over with
+		// nothing left to answer for (AnsweredTest knows it by name).
 		callback.success("true");
 		Environment.getInstance().state().closing = true;
 		Environment.getInstance().workers().execute(new WindowCloser(frame));

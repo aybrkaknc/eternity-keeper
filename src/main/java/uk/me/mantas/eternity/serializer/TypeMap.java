@@ -25,8 +25,13 @@ import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
+/**
+ * Registry mapping C# / Unity serialized type names in Pillars of Eternity
+ * save files to their Java mirror classes in {@code uk.me.mantas.eternity.game}.
+ */
 public class TypeMap {
 
 	// map Unity or C sharp object types to Java containers
@@ -160,34 +165,23 @@ public class TypeMap {
 	private static final String OLD_TYPE_MODULE = "UnityEngine";
 
 	private static final Pattern newPattern = Pattern.compile(MODULE_PREFIX + NEW_TYPE_MODULE);
+	private static final Map<String, String> COMPATIBLE_TYPE_CACHE = new ConcurrentHashMap<>();
 
-	public static boolean usesNewUnityModule(String type) {
-		return type.contains(NEW_TYPE_MODULE);
+	public static boolean usesNewUnityModule (final String type) {
+		return type != null && type.contains(NEW_TYPE_MODULE);
 	}
 
-	public static String getBackwardsCompatibleType(String type) {
-		if (usesNewUnityModule(type)) {
-			// TODO: use a cache for performance
-			type = newPattern.matcher(type).replaceFirst(MODULE_PREFIX + OLD_TYPE_MODULE);
+	/**
+	 * Rewrites {@code UnityEngine.CoreModule} assembly qualifiers to legacy
+	 * {@code UnityEngine} qualifiers so Windows Store / Xbox saves can be read
+	 * by Steam and GOG builds. Results are memoized per type descriptor.
+	 */
+	public static String getBackwardsCompatibleType (final String type) {
+		if (type == null || !usesNewUnityModule(type)) {
+			return type;
 		}
 
-		return type;
+		return COMPATIBLE_TYPE_CACHE.computeIfAbsent(
+			type, t -> newPattern.matcher(t).replaceFirst(MODULE_PREFIX + OLD_TYPE_MODULE));
 	}
-
-	// I've used a reqex to work with unknown types, but an equivalent map for the
-	// types I know of is as follows:
-	//
-	// public static final Map<String, String> backwardsCompatible = new
-	// HashMap<String, String>() {{
-	// put("UnityEngine.Color, UnityEngine.CoreModule", "UnityEngine.Color,
-	// UnityEngine");
-	// put("UnityEngine.Vector2, UnityEngine.CoreModule", "UnityEngine.Vector2,
-	// UnityEngine");
-	// put("UnityEngine.Vector3[][], UnityEngine.CoreModule",
-	// "UnityEngine.Vector3[][], UnityEngine");
-	// put("UnityEngine.Vector3[], UnityEngine.CoreModule", "UnityEngine.Vector3[],
-	// UnityEngine");
-	// put("UnityEngine.Vector3, UnityEngine.CoreModule", "UnityEngine.Vector3,
-	// UnityEngine");
-	// }};
 }

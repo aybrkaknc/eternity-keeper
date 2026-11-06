@@ -35,6 +35,12 @@ public class Settings {
 		settingsFile = Environment.getInstance().directory().settingsFile();
 
 		try {
+			// The data folder does not exist before the first run.
+			final File folder = settingsFile.getAbsoluteFile().getParentFile();
+			if (folder != null && !folder.isDirectory() && !folder.mkdirs()) {
+				logger.error("Unable to create '%s'.%n", folder.getAbsolutePath());
+			}
+
 			final boolean fileCreated = settingsFile.createNewFile();
 			if (fileCreated) {
 				writeBlankJSON();

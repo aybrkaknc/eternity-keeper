@@ -28,6 +28,12 @@ import org.w3c.dom.DOMException;
 import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Logger;
 
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -81,14 +87,17 @@ public class SaveGameInfo {
 				"Save folder name was malformed: %s%n"
 				, saveFolder.getName());
 
-			throw new SaveFileInfoException();
+			throw new SaveFileInfoException(
+				"its file name is not one the game gives a save"
+					+ " (a session, a number and an area, with spaces between)");
 		}
 
-		boolean success = parseSaveInfoXML(infoFiles.get("saveinfo.xml"));
-		success = success && encodeImageData(infoFiles);
+		if (!parseSaveInfoXML(infoFiles.get("saveinfo.xml"))) {
+			throw new SaveFileInfoException("its saveinfo.xml could not be read");
+		}
 
-		if (!success) {
-			throw new SaveFileInfoException();
+		if (!encodeImageData(infoFiles)) {
+			throw new SaveFileInfoException("its screenshot or a portrait could not be read");
 		}
 	}
 
@@ -151,11 +160,16 @@ public class SaveGameInfo {
 			String timestampText = xml.find("Simple[name='RealTimestamp']").attr("value");
 			timestamp = dateFormatter.parseDateTime(timestampText);
 			return true;
-		} catch (DOMException e) {
+		} catch (RuntimeException e) {
+			// Text that is not XML, a field that is missing, a date that is not
+			// one: whatever is wrong with one save's summary costs that save
+			// its tile and nothing else. Only a DOMException used to be caught
+			// here, and a summary without a Chapter took the whole list down
+			// with a NullPointerException.
 			logger.error(
 				"Error parsing %s: %s%n"
-				, saveInfoXML.getAbsolutePath()
-				, e.getMessage());
+				, saveInfoXML == null ? "saveinfo.xml" : saveInfoXML.getAbsolutePath()
+				, e.toString());
 		} catch (IOException e) {
 			logger.error(
 				"Error reading %s: %s%n"
@@ -166,14 +180,50 @@ public class SaveGameInfo {
 		return false;
 	}
 
+	/** Why a save has no tile, in words that finish "… is not listed, because". */
 	public static class SaveFileInfoException extends Exception {
-		SaveFileInfoException () {
-			super();
+		SaveFileInfoException (final String reason) {
+			super(reason);
 		}
 	}
 
 	// TODO: refactor to update an opened saveinfo
 	static void updateSaveInfo (File saveDirectory, String newUserSaveName)
+			throws IOException {
+
+		updateSaveInfo(saveDirectory, newUserSaveName, Collections.emptyMap());
+	}
+
+	/**
+	 * Rewrites saveinfo.xml — the display name, plus any other fields the edit
+	 * touched.
+	 *
+	 * <p>saveinfo.xml is a summary the game reads to build its load list without
+	 * opening the save proper, so a few settings live in both places. Difficulty
+	 * is the one that shows: change it and only MobileObjects.save knew, leaving
+	 * the load screen advertising the old one until the game next saved for
+	 * itself.
+	 */
+	/**
+	 * A value as the game itself writes it. .NET spells a Boolean True or False,
+	 * and the editor's copy of one arrives as Java's true or false; the game
+	 * parses either, but a file the game could not have written is a file the
+	 * next reader has to wonder about.
+	 */
+	private static String inTheGamesSpelling (final String type, final String value) {
+		if (type == null || !type.startsWith("System.Boolean")) {
+			return value;
+		}
+
+		if ("true".equalsIgnoreCase(value)) {
+			return "True";
+		}
+
+		return "false".equalsIgnoreCase(value) ? "False" : value;
+	}
+
+	static void updateSaveInfo (
+			File saveDirectory, String newUserSaveName, Map<String, String> extraFields)
 			throws IOException {
 
 		File saveinfoXML = new File(saveDirectory, "saveinfo.xml");
@@ -185,17 +235,41 @@ public class SaveGameInfo {
 		try {
 			Match xml = $(contents);
 			xml.find("Simple[name='UserSaveName']").attr("value", newUserSaveName);
-			xml.write(newContentsStream);
-		} catch (DOMException e) {
 
+			for (Map.Entry<String, String> field : extraFields.entrySet()) {
+				Match target = xml.find(
+						"Simple[name='" + field.getKey() + "']");
+
+				// Only ever updated, never added: a field this file doesn't
+				// already carry isn't one the game reads from here.
+				if (target.size() > 0) {
+					target.attr("value", inTheGamesSpelling(target.attr("type"), field.getValue()));
+				}
+			}
+
+			// Serialize with an explicit UTF-8 encoder; joox's write() uses
+			// the platform charset which silently replaces characters it
+			// cannot encode, corrupting non-ASCII save names.
+			Transformer transformer = TransformerFactory.newInstance().newTransformer();
+			transformer.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
+			transformer.transform(
+					new DOMSource(xml.document()), new StreamResult(newContentsStream));
+		} catch (DOMException | TransformerException e) {
+			// Said as an error the caller reports. It used to be logged and
+			// passed over, and the line below then failed on an empty array.
 			logger.error(
 					"Error parsing copied saveinfo '%s': %s%n"
 					, saveinfoXML.getAbsolutePath()
 					, e.getMessage());
+
+			throw new IOException("saveinfo.xml could not be rewritten: " + e.getMessage(), e);
 		}
 
-		String newContents = newContentsStream.toString("UTF-8");
-		byte[] newContentsBytes = newContents.getBytes();
+		byte[] newContentsBytes = newContentsStream.toByteArray();
+		if (newContentsBytes.length == 0) {
+			throw new IOException("saveinfo.xml could not be rewritten: nothing was produced.");
+		}
+
 		if (newContentsBytes[0] != -17) {
 			newContentsBytes = EKUtils.addBOM(newContentsBytes);
 		}

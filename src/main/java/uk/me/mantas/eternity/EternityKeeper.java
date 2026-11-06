@@ -28,7 +28,9 @@ import org.cef.OS;
 import org.cef.browser.CefBrowser;
 import org.cef.handler.CefAppHandlerAdapter;
 import org.json.JSONObject;
+import uk.me.mantas.eternity.environment.AppPaths;
 import uk.me.mantas.eternity.environment.Environment;
+import uk.me.mantas.eternity.environment.TempSweep;
 
 import javax.swing.*;
 import java.awt.*;
@@ -38,43 +40,53 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 public class EternityKeeper extends JFrame {
-	private CefApp cefApp;
-	private CefClient cefClient;
-	private CefBrowser browser;
+	private static final Color OBSIDIAN_BG = new Color(0x1b, 0x16, 0x11);
+	private final CefApp cefApp;
+	private final CefClient cefClient;
+	private final CefBrowser browser;
 
-	private EternityKeeper () {
+	private EternityKeeper (final File ui) {
+		setBackground(OBSIDIAN_BG);
+		getContentPane().setBackground(OBSIDIAN_BG);
+
 		CefApp.addAppHandler(new CefAppHandlerAdapter(null) {
 			@Override
-			public void stateHasChanged (CefAppState state) {
+			public void stateHasChanged (final CefAppState state) {
 				if (state == CefAppState.TERMINATED) {
 					shutdown();
 				}
 			}
 		});
 
+		final AppPaths paths = Environment.getInstance().directory().paths();
 		final CefSettings settings = new CefSettings();
 		settings.windowless_rendering_enabled = OS.isLinux();
-		settings.remote_debugging_port = 13002;
+		settings.remote_debugging_port = paths.remoteDebuggingPort();
+		settings.log_file = paths.cefLogFile().getAbsolutePath();
 
 		cefApp = CefApp.getInstance(settings);
 		cefClient = cefApp.createClient();
 		JSHandlers.register(cefClient, this);
 
-		String index = "/src/ui/index.html";
-		if (OS.isLinux()) {
-			index = new File("src/ui/index.html").getAbsolutePath();
-		}
-
-		browser = cefClient.createBrowser(String.format("file://%s", index), OS.isLinux(), false);
+		// An absolute file: URL, so the UI loads whichever folder the app was
+		// started from (a shortcut's "Start in", an install under Program Files).
+		final String index = new File(ui, "index.html").toPath().toUri().toString();
+		browser = cefClient.createBrowser(index, OS.isLinux(), false);
 		setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
-		getContentPane().add(browser.getUIComponent(), BorderLayout.CENTER);
+
+		final Component uiComponent = browser.getUIComponent();
+		if (uiComponent != null) {
+			uiComponent.setBackground(OBSIDIAN_BG);
+		}
+		getContentPane().add(uiComponent, BorderLayout.CENTER);
 		pack();
 
 		addWindowListener(new WindowAdapter() {
 			@Override
-			public void windowClosing (WindowEvent e) {
+			public void windowClosing (final WindowEvent e) {
 				if (Environment.getInstance().state().closing) {
 					cefApp.dispose();
 					dispose();
@@ -133,19 +145,39 @@ public class EternityKeeper extends JFrame {
 		Settings.getInstance().save();
 	}
 
+	// Started through Launcher, which settles what AWT reads as it loads.
 	public static void main (final String[] args) {
 		Locale.setDefault(Locale.UK);
 		final ImageIcon icon = new ImageIcon(EternityKeeper.class.getResource("/icon.png"));
-		final File log = new File("eternity.log");
 
 		// We set up various environment properties and dependency injections
 		// here in order to make it easier to test classes later.
 		Environment.initialise();
+		final AppPaths paths = Environment.getInstance().directory().paths();
+		try {
+			paths.adoptLegacySettings();
+		} catch (final IOException e) {
+			System.err.printf("Could not copy the old settings.json: %s%n", e.getMessage());
+		}
+
 		Settings.initialise();
-		rolloverLogFile(log);
+		rolloverLogFile(paths.logFile());
+
+		// A copy of a save for every editor that crashed or was killed.
+		TempSweep.inBackground(Environment.getInstance().directory().working());
+
+		final Optional<File> ui = paths.ui();
+		if (!ui.isPresent()) {
+			JOptionPane.showMessageDialog(null
+				, "Eternity Keeper can't find its user interface files.\n\n"
+					+ "Expected a \"ui\" folder beside the program in\n" + paths.home()
+					+ "\n\nRe-extract the download, keeping every folder in it."
+				, "Eternity Keeper", JOptionPane.ERROR_MESSAGE);
+			System.exit(1);
+		}
 
 		final Rectangle windowBounds = EKUtils.getDefaultWindowBounds();
-		final Frame frame = new EternityKeeper();
+		final Frame frame = new EternityKeeper(ui.get());
 		frame.setTitle("Eternity Keeper");
 		frame.setBounds(windowBounds);
 		frame.setVisible(true);

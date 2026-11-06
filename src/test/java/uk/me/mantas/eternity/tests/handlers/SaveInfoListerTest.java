@@ -20,6 +20,8 @@
 package uk.me.mantas.eternity.tests.handlers;
 
 import org.cef.callback.CefQueryCallback;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import uk.me.mantas.eternity.environment.Environment;
@@ -33,9 +35,13 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
-import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.*;
 
 public class SaveInfoListerTest extends TestHarness {
@@ -68,7 +74,19 @@ public class SaveInfoListerTest extends TestHarness {
 		+ ",\"trialOfIron\":false,\"userSaveName\":\"Start\""
 		+ ",\"sceneTitle\":\"Encampment\"}]";
 
-	private final static String NO_RESULTS = "{\"error\":\"NO_RESULTS\"}";
+	// The list answers with the saves and with what it left out, or with an
+	// error and what it left out; read as JSON, since the order an object's
+	// keys are written in is nobody's promise.
+	private static List<JSONObject> replies (final CefQueryCallback callback, final int times) {
+		final ArgumentCaptor<String> reply = ArgumentCaptor.forClass(String.class);
+		verify(callback, times(times)).success(reply.capture());
+		return reply.getAllValues().stream().map(JSONObject::new).collect(Collectors.toList());
+	}
+
+	private static void assertNoResults (final JSONObject reply) {
+		assertEquals("NO_RESULTS", reply.getString("error"));
+		assertEquals(0, reply.getJSONArray("unreadable").length());
+	}
 
 	@Test
 	public void noSaveFilesFound () throws IOException {
@@ -77,7 +95,7 @@ public class SaveInfoListerTest extends TestHarness {
 		Environment.getInstance().directory().working(workingDirectory);
 
 		new SaveInfoLister("404", mockCallback).run();
-		verify(mockCallback).success(NO_RESULTS);
+		assertNoResults(replies(mockCallback, 1).get(0));
 	}
 
 	@Test
@@ -97,7 +115,18 @@ public class SaveInfoListerTest extends TestHarness {
 			.getAbsolutePath();
 
 		new SaveInfoLister(savesLocation, mockCallback).run();
-		verify(mockCallback).success(String.format(SAVES_JSON, save1, save2));
+		final JSONObject reply = replies(mockCallback, 1).get(0);
+		final JSONArray listed = reply.getJSONArray("saves");
+		assertEquals(1431272692000L, listed.getJSONObject(0).getLong("timestampMillis"));
+		for (int i = 0; i < listed.length(); i++) {
+			listed.getJSONObject(i).remove("timestampMillis");
+		}
+		assertTrue(listed.toString()
+			, new JSONArray(String.format(SAVES_JSON, save1, save2)).similar(listed));
+
+		// The folder's two other files are not called .savegame, so they are
+		// nothing the list left out: it never took them for saves.
+		assertEquals(0, reply.getJSONArray("unreadable").length());
 	}
 
 	@Test
@@ -113,7 +142,7 @@ public class SaveInfoListerTest extends TestHarness {
 		when(mockExtractor.unpackAllSaves()).thenReturn(Optional.of(new SaveGameInfo[0]));
 		exposedLister.call("unpackAllSaves", mockExtractor);
 
-		verify(mockCallback, times(2)).success(NO_RESULTS);
+		replies(mockCallback, 2).forEach(SaveInfoListerTest::assertNoResults);
 	}
 
 	@Test
@@ -127,8 +156,8 @@ public class SaveInfoListerTest extends TestHarness {
 		when(mockExtractor.unpackAllSaves()).thenReturn(Optional.of(new SaveGameInfo[]{mockInfo}));
 		exposedLister.call("unpackAllSaves", mockExtractor);
 
-		ArgumentCaptor<String> argument = ArgumentCaptor.forClass(String.class);
-		verify(mockCallback).success(argument.capture());
-		assertNotEquals(NO_RESULTS, argument.getValue());
+		final JSONObject reply = replies(mockCallback, 1).get(0);
+		assertFalse(reply.has("error"));
+		assertEquals(1, reply.getJSONArray("saves").length());
 	}
 }

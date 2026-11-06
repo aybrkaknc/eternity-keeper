@@ -21,33 +21,48 @@ package uk.me.mantas.eternity.tests.handlers;
 
 import org.cef.browser.CefBrowser;
 import org.cef.callback.CefQueryCallback;
+import org.mockito.ArgumentCaptor;
 import org.json.JSONObject;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.Settings;
 import uk.me.mantas.eternity.environment.Environment;
+import uk.me.mantas.eternity.environment.GameLocator;
 import uk.me.mantas.eternity.handlers.GetDefaultSaveLocation;
 import uk.me.mantas.eternity.tests.TestHarness;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static uk.me.mantas.eternity.environment.Variables.Key.*;
 
 public class GetDefaultSaveLocationTest extends TestHarness {
-	private static final String NO_DEFAULT = "{\"savesLocation\":\"\",\"gameLocation\":\"\"}";
+	private static final String NO_DEFAULT =
+		"{\"savesLocation\":\"\",\"gameLocation\":\"\",\"notes\":[]}";
 	private static final String JSON_SKELETON =
-		"{\"savesLocation\":\"%s\",\"gameLocation\":\"%s\"}";
+		"{\"savesLocation\":\"%s\",\"gameLocation\":\"%s\",\"notes\":[]}";
 
 	@Before
 	public void setup () {
 		super.setup();
 		Settings.getInstance().json = new JSONObject();
+	}
+
+	@After
+	public void restoreLocator () {
+		GameLocator.useNoGame();
 	}
 
 	@Test
@@ -113,36 +128,134 @@ public class GetDefaultSaveLocationTest extends TestHarness {
 	}
 
 	@Test
-	public void onQueryFoundGameInstallation () {
+	public void whateverTheLocatorFindsIsWhatComesBack () throws IOException {
+		// Where the game is found is GameLocator's problem and has its own
+		// tests; what the handler owes is asking, answering with it, and
+		// remembering it in settings so the search does not run again.
 		final Environment environment = Environment.getInstance();
 		final GetDefaultSaveLocation cls = new GetDefaultSaveLocation();
 		final CefBrowser mockBrowser = mock(CefBrowser.class);
 		final CefQueryCallback mockCallback = mock(CefQueryCallback.class);
 
-		final Optional<File> gameLocation = EKUtils.createTempDir(PREFIX);
-		assertTrue(gameLocation.isPresent());
+		final Optional<File> drive = EKUtils.createTempDir(PREFIX);
+		assertTrue(drive.isPresent());
+
+		final File installation = new File(drive.get(), "Pillars of Eternity");
+		assertTrue(new File(installation, "PillarsOfEternity_Data").mkdirs());
 
 		environment.variables().set(USERPROFILE, "404");
-		environment.variables().set(SYSTEMDRIVE, gameLocation.get().getAbsolutePath());
+		environment.variables().set(SYSTEMDRIVE, null);
 		environment.variables().set(XDG_DATA_HOME, null);
 		environment.variables().set(HOME, null);
 
-		environment.config().possibleInstallationLocations(new ArrayList<>());
-		environment.config().possibleInstallationLocations().add("first");
-		environment.config().possibleInstallationLocations().add("second");
-
-		final File firstLocation = new File(gameLocation.get(), "first");
-		final File secondLocation = new File(gameLocation.get(), "second");
-
-		assertTrue(firstLocation.mkdirs());
-		assertTrue(secondLocation.mkdirs());
+		GameLocator.use(locatorFinding(drive.get()));
 
 		cls.onQuery(mockBrowser, 0, "", false, mockCallback);
 		verify(mockCallback).success(
 			String.format(
 				JSON_SKELETON
 				, ""
-				, firstLocation.getAbsolutePath().replace("\\", "\\\\")));
+				, installation.getCanonicalPath().replace("\\", "\\\\")));
+
+		assertEquals(installation.getCanonicalPath()
+			, Settings.getInstance().json.getString("gameLocation"));
+	}
+
+	// The game's own names are read once and kept, out of the install that
+	// settings name. Whatever asked before the install was found was told
+	// there is none; finding it has to start that again.
+	@Test
+	public void theGamesTextIsReadOnceTheGameIsFound () throws IOException {
+		final Environment environment = Environment.getInstance();
+		final Optional<File> drive = EKUtils.createTempDir(PREFIX);
+		assertTrue(drive.isPresent());
+
+		final File installation = new File(drive.get(), "Pillars of Eternity");
+		org.apache.commons.io.FileUtils.write(new File(installation
+			, "PillarsOfEternity_Data/data/localized/en/text/game/characters.stringtable")
+			, "<StringTableFile><Entries><Entry><ID>329</ID><DefaultText>Crucible Knight"
+				+ "</DefaultText></Entry></Entries></StringTableFile>", "UTF-8");
+
+		environment.variables().set(USERPROFILE, "404");
+		environment.variables().set(SYSTEMDRIVE, null);
+		environment.variables().set(XDG_DATA_HOME, null);
+		environment.variables().set(HOME, null);
+
+		uk.me.mantas.eternity.save.GameText.reset();
+		assertEquals(Optional.empty(), uk.me.mantas.eternity.save.GameText.getInstance().lookup(
+			uk.me.mantas.eternity.game.DatabaseString.StringTableType.Characters, 329));
+
+		GameLocator.use(locatorFinding(drive.get()));
+		new GetDefaultSaveLocation().onQuery(
+			mock(CefBrowser.class), 0, "", false, mock(CefQueryCallback.class));
+
+		assertEquals(Optional.of("Crucible Knight")
+			, uk.me.mantas.eternity.save.GameText.getInstance().lookup(
+				uk.me.mantas.eternity.game.DatabaseString.StringTableType.Characters, 329));
+		uk.me.mantas.eternity.save.GameText.useNoText();
+	}
+
+	@Test
+	public void aStoreThatCannotBeUsedIsExplainedRatherThanIgnored () {
+		// The Microsoft Store copy is detectable but unreadable, so the answer
+		// is empty and the reason travels with it.
+		final Environment environment = Environment.getInstance();
+		final GetDefaultSaveLocation cls = new GetDefaultSaveLocation();
+		final CefBrowser mockBrowser = mock(CefBrowser.class);
+		final CefQueryCallback mockCallback = mock(CefQueryCallback.class);
+
+		environment.variables().set(USERPROFILE, "404");
+		environment.variables().set(SYSTEMDRIVE, null);
+		environment.variables().set(XDG_DATA_HOME, null);
+		environment.variables().set(HOME, null);
+
+		GameLocator.use(new GameLocator(
+			new GameLocator.Registry() {
+				@Override
+				public Optional<String> value (final String key, final String name) {
+					return Optional.empty();
+				}
+
+				@Override
+				public List<String> subKeys (final String key) {
+					return key.contains("AppModel")
+						? Collections.singletonList(
+							key + "\\ParadoxInteractive.PillarsofEternity-Microsof_1.0")
+						: Collections.emptyList();
+				}
+			}
+			, Collections.emptyList()
+			, new HashMap<>()));
+
+		cls.onQuery(mockBrowser, 0, "", false, mockCallback);
+
+		final ArgumentCaptor<String> response = ArgumentCaptor.forClass(String.class);
+		verify(mockCallback).success(response.capture());
+
+		final JSONObject json = new JSONObject(response.getValue());
+		assertEquals("", json.getString("gameLocation"));
+		assertEquals(1, json.getJSONArray("notes").length());
+		assertTrue(json.getJSONArray("notes").getString(0).contains("Microsoft Store"));
+	}
+
+	/** A locator looking at one "drive" with the game sitting on it. */
+	private GameLocator locatorFinding (final File drive) {
+		return new GameLocator(
+			emptyRegistry(), Collections.singletonList(drive), new HashMap<>());
+	}
+
+	private GameLocator.Registry emptyRegistry () {
+		return new GameLocator.Registry() {
+			@Override
+			public Optional<String> value (final String key, final String name) {
+				return Optional.empty();
+			}
+
+			@Override
+			public List<String> subKeys (final String key) {
+				return Collections.emptyList();
+			}
+		};
 	}
 
 	@Test
@@ -187,31 +300,71 @@ public class GetDefaultSaveLocationTest extends TestHarness {
 	}
 
 	@Test
-	public void findsLinuxGameDirectory () {
+	public void findsMacSaveDirectory () {
+		// macOS keeps them under Application Support. Written from the
+		// roadmap's note rather than from a Mac -- there is none here, and the
+		// app cannot start there yet anyway -- so both spellings are accepted
+		// and this pins whichever one exists being picked up.
 		final Environment environment = Environment.getInstance();
 		final GetDefaultSaveLocation cls = new GetDefaultSaveLocation();
 		final CefBrowser mockBrowser = mock(CefBrowser.class);
 		final CefQueryCallback mockCallback = mock(CefQueryCallback.class);
 
-		final Optional<File> gameLocation = EKUtils.createTempDir(PREFIX);
-		assertTrue(gameLocation.isPresent());
+		final Optional<File> home = EKUtils.createTempDir(PREFIX);
+		assertTrue(home.isPresent());
 
 		environment.variables().set(USERPROFILE, null);
 		environment.variables().set(SYSTEMDRIVE, null);
 		environment.variables().set(XDG_DATA_HOME, null);
-		environment.variables().set(HOME, gameLocation.get().getAbsolutePath());
+		environment.variables().set(HOME, home.get().getAbsolutePath());
 
-		final File pillarsInstall =
-			gameLocation.get().toPath()
-				.resolve(".steam/steam/SteamApps/common/Pillars of Eternity").toFile();
+		final File saves = home.get().toPath()
+			.resolve("Library/Application Support/Pillars of Eternity/SavedGames")
+			.toFile();
 
-		assertTrue(pillarsInstall.mkdirs());
+		assertTrue(saves.mkdirs());
+
+		cls.onQuery(mockBrowser, 0, "", false, mockCallback);
+		verify(mockCallback).success(
+			String.format(
+				JSON_SKELETON
+				, saves.getAbsolutePath().replace("\\", "\\\\")
+				, ""));
+	}
+
+	@Test
+	public void findsLinuxGameDirectory () throws IOException {
+		// Steam under the home directory rather than on a drive. The locator
+		// reads HOME out of the environment it is handed, which in production
+		// is System.getenv().
+		final Environment environment = Environment.getInstance();
+		final GetDefaultSaveLocation cls = new GetDefaultSaveLocation();
+		final CefBrowser mockBrowser = mock(CefBrowser.class);
+		final CefQueryCallback mockCallback = mock(CefQueryCallback.class);
+
+		final Optional<File> home = EKUtils.createTempDir(PREFIX);
+		assertTrue(home.isPresent());
+
+		final File installation = new File(
+			home.get(), ".steam/steam/steamapps/common/Pillars of Eternity");
+
+		assertTrue(new File(installation, "PillarsOfEternity_Data").mkdirs());
+
+		environment.variables().set(USERPROFILE, null);
+		environment.variables().set(SYSTEMDRIVE, null);
+		environment.variables().set(XDG_DATA_HOME, null);
+		environment.variables().set(HOME, home.get().getAbsolutePath());
+
+		final Map<String, String> variables = new HashMap<>();
+		variables.put("HOME", home.get().getAbsolutePath());
+		GameLocator.use(new GameLocator(
+			emptyRegistry(), Collections.emptyList(), variables));
 
 		cls.onQuery(mockBrowser, 0, "", false, mockCallback);
 		verify(mockCallback).success(
 			String.format(
 				JSON_SKELETON
 				, ""
-				, pillarsInstall.getAbsolutePath().replace("\\", "\\\\")));
+				, installation.getCanonicalPath().replace("\\", "\\\\")));
 	}
 }

@@ -26,6 +26,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.Settings;
+import uk.me.mantas.eternity.save.GameText;
 
 import java.util.Iterator;
 
@@ -46,12 +47,22 @@ public class SaveSettings extends CefMessageRouterHandlerAdapter {
 			JSONObject json = new JSONObject(request);
 			Iterator<String> keys = json.keys();
 
+			// The game's names are read once and kept: out of the install, in
+			// one language. Another install or another language means reading
+			// them again; any other setting leaves them be.
+			final boolean namesChange =
+				changes(settings, json, "language") || changes(settings, json, "gameLocation");
+
 			while (keys.hasNext()) {
 				String key = keys.next();
 				settings.put(key, json.get(key));
 			}
 
 			Settings.getInstance().save();
+
+			if (namesChange) {
+				GameText.startAgain();
+			}
 		} catch (JSONException e) {
 			logger.error(
 				"Unable to read JSON-formatted settings data from client: %s%n"
@@ -60,6 +71,13 @@ public class SaveSettings extends CefMessageRouterHandlerAdapter {
 
 		callback.success("");
 		return true;
+	}
+
+	private static boolean changes (
+		final JSONObject settings, final JSONObject request, final String key) {
+
+		return request.has(key)
+			&& !String.valueOf(request.get(key)).equals(settings.optString(key, ""));
 	}
 
 	@Override

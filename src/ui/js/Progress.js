@@ -27,7 +27,13 @@ var Progress = function () {
 	self.html = {};
 	self.render = newState => {
 		self.state = $.extend({}, defaultState, newState);
-		self.html.progress.find('div').css('width', self.state.percentage + '%');
+		var pct = Math.max(0, Math.min(100, Number(self.state.percentage) || 0));
+		var active = pct > 0;
+		self.html.progress.toggleClass('ek-progress-active', active);
+		self.html.progress.find('div').css({
+			width: pct + '%'
+			, opacity: active ? 1 : 0
+		});
 	};
 };
 

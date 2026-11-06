@@ -1,115 +1,173 @@
-# COMPATIBLE WITH THE LATEST VERSION OF PILLARS OF ETERNITY (2025+)
-**This fork has been updated and tested to work seamlessly with the latest Steam/GOG versions of Pillars of Eternity.**
+<div align="center">
 
-A Pillars of Eternity save editor and character importer/exporter.
+<img src="src/main/resources/icon.png" alt="" width="104">
 
-# Dependencies
-Several dependencies are already bundled with the project. In order to build and run the project you will also need the following:
+# Eternity Keeper
 
-* [Apache Maven](https://maven.apache.org/)
-* [JDK 1.8](http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html) or above
+**A save editor for *Pillars of Eternity***
 
-# Support
-Currently there is support for Windows and Linux versions.
+Change your characters, their gear and abilities, your party and your stronghold,<br>
+then load the result in the game. Works with the current Steam and GOG versions.
 
-# Contributing
-This is a clone of the code from https://bitbucket.org/Fyorl/eternity-keeper/src/master/ but with
-- the commit history revised to strip symbols from all the linux shared libraries (otherwise they were too large for github)
-- some alpha changes from ktully which haven't been tidied up for upstream yet
+[![Download: Windows installer and zip](https://img.shields.io/badge/Download-Windows_installer_and_zip-2ea043?style=for-the-badge)](../../releases)
 
-1. Fork this repository.
-2. Clone your forked repository.
-3. Make changes.
-4. Write tests.
-5. Submit a pull request.
+![Windows: 10 and 11, 64-bit](https://img.shields.io/badge/Windows-10_and_11,_64--bit-0078D4)
+![Pillars of Eternity: tested with v3.9.5](https://img.shields.io/badge/Pillars_of_Eternity-tested_with_v3.9.5-7b3fb3)
+![License: GPL v3](https://img.shields.io/badge/license-GPL_v3-blue)
 
-# Building
-This project uses maven so building it should be relatively straightforward.
+</div>
 
-	mvn install -P<platform>
+<br>
 
-Where *<platform>* is one of `win32`, `win64`, or `linux64`.
+![The Inventory tab: the character's equipment around their portrait, quick items and weapon sets below, and every party member's pack beside them](docs/screenshots/inventory.png)
 
-# Running
-Assuming you've already built the project and have a `target` directory now and have your Java 8 executable in your `PATH`, you can use `run.bat` or `run.sh` to run the project.
-**Note:** Some users have reported segmentation faults when attempting to run Eternity Keeper using the OpenJDK. If you experience the same issue, switching to the Oracle JDK may resolve it.
+## What you can change
 
-# Converting Windows Store save files to Steam/GoG
-Saves from the Windows Store/GamePass game build cannot be loaded by Steam or GoG game builds.
+| Area | What you can do |
+|---|---|
+| **Characters** | Attributes, skills, experience and level. Race, subrace, class, culture, background, deity and paladin order, with what each choice is worth on the character sheet. Portraits and names. |
+| **Inventory** | Every party member's pack, equipment, quick slots and weapon sets, and the shared stash, with the game's own names and icons. Move and equip items by the game's rules, change stack sizes, add any item in the game, and sell junk in bulk. |
+| **Abilities** | Abilities, spells and talents: anything a character's class, race or companion story allows, including what a talent grants. A wizard's grimoire, four spells to a level. |
+| **Party** | Swap companions with the stronghold's roster from anywhere, and bring dead companions back to life, their personal quest included. Heal, level up and resupply everyone at once. |
+| **Stronghold** | Build and demolish upgrades, with Prestige and Security worked out as the game does it. Dismiss hirelings, release prisoners, and set turns, debt and taxes. |
+| **Vendors** | See every store's stock, and take out what you sold there. |
+| **Game settings** | Difficulty, Expert Mode, Trial of Iron and turn-based mode. Party money and camping supplies. Achievements turned back on. |
 
-This alpha release includes initial code by ktully allowing you to generate Steam/GoG compatible saves from Windows saves.
+**And also:**
 
-1. Run Eternity Keeper as Normal
-1. Close the settings dialog if it appears
-1. Enter the path to your Windows Store saves in 'Save Folder' box and click 'Search' to refresh the savegame list.
-    * Typically your Windows Store saves are in a numeric subdirectory like `%USERPROFILE%\Saved Games\Pillars of Eternity\1234567890987654`.
-1. Click on a Windows Store save file to load it
-1. Progress indicator on the selected file will spin as the file is opened and converted - this may take a few minutes (depending on your hardware and on how much progress you had made in the game)
-1. When conversion has completed, the save file list will refresh showing a new `( converted)` save
-1. Quit Eternity Keeper
-1. Open your Windows Store save directory in Windows Explorer and move the converted savefile into `%USERPROFILE%\Saved Games\Pillars of Eternity\`, so that the Steam/GoG version of the game can find it.
+- **Find anything** in the open save with <kbd>Ctrl</kbd>+<kbd>F</kbd>: characters, items wherever they are, abilities and game variables.
+- **Undo and Redo** for every change since you opened or last saved the save.
+- **Compare two saves** in plain words: experience gained, items moved, quests advanced.
+- **Take characters and gear to another save**: export a character as a `.chr` file, or what they wear and carry as a `.loadout`, and bring it into another save or playthrough.
+- **Your game's language**: items, abilities and upgrades carry the names your game shows.
+- **Older game versions**: convert a save for Steam and GOG copies of the game from before its 2017 engine update.
 
-**Note:** Keep a backup of your original unconverted save file(s) - the conversion process could conceivably cause the game to crash or have other unanticipated bugs later.
+| A character | Abilities and talents | The stronghold |
+|---|---|---|
+| ![Attributes, skills and identity, with what each choice is worth](docs/screenshots/character.png) | ![What a character knows, and what their talents grant](docs/screenshots/abilities.png) | ![Upgrades, Prestige and Security, hirelings](docs/screenshots/stronghold.png) |
 
+## Getting started
 
-# Features
+1. **Download** the installer or the zip from the [Releases page](../../releases). They hold the same editor, and neither needs Java or anything else installed.
+   - `EternityKeeper-<version>-win64-setup.exe` installs it for your user, with no administrator rights, and adds it to the Start menu.
+   - `EternityKeeper-<version>-win64.zip` needs no installing: extract the whole zip anywhere and run `Eternity Keeper.exe`.
+2. **Start it.** It finds your game and your saves by itself, and offers to read item names and icons from your game. That takes a few minutes, once.
+3. **Edit.** Open a save, change what you like, and press **Save**. The editor writes a *new* save; the one you opened is never touched.
+4. **Play.** Load the new save in the game. It is listed beside the original, under the name you gave it.
 
-* Auto updater (currently broken)
-* Windows and Linux support
-* Modify character attributes
-* Modify all raw numeric character variables
-* Modify character names (including companions)
+> [!NOTE]
+> The downloads are not signed, so the first time you run one, Windows may say it protected your PC. Choose **More info**, then **Run anyway**.
 
-**Note about the Raw tab**: The 'Raw' tab is basically a dump of all a character's stats from the save file. Changing most of the values here has not been tested and could result in a corrupt save file. Eternity Keeper will never overwrite your save files, it will just create a new, edited one, so you don't need to worry too much.
+> [!IMPORTANT]
+> **Your saves are safe.** The editor never writes to the save you open, and before it deletes, renames or replaces a save it keeps a copy: **File → Backups…** puts any recent one back. Even so, keep a copy of `%USERPROFILE%\Saved Games\Pillars of Eternity` until you have loaded an edited save in the game.
 
-The values in the other tabs have been tested and will be accepted by the game. The plan is to fill out these other tabs with more stats once they have been tested. Things in the Raw tab such as 'BaseWill', etc. in which it is pretty obvious what they do, should be quite safe to modify.
+## Requirements
 
-# Planned Features
-* Faster conversion from Windows to Steam format
-* Mac support
-* Character importing/exporting
-* Party management
-* Bring dead characters back to life
-* Clean up vendors (i.e. delete all the crap you sold to vendors from the save files to make them smaller and faster to save in future)
-* Modify inventory and stash
-* Modify skills and talents
-* Modify culture and race
-* Modify grimoires
-* Item editor
-* Stronghold editor
-* Modify global variables
-* Modify companion portraits (note that you can already do this by just renaming and shuffling around files in the game's portraits directory)
+- **Windows 10 or 11**, 64-bit.
+- ***Pillars of Eternity*** from Steam, GOG or Epic, installed on the same computer. The editor reads item names, icons and portraits from your copy of the game; without it, items go by their file names. A Microsoft Store copy keeps its files locked, so they cannot be read from it.
 
-# Eternity Keeper as a platform
-One of the long-term goals of this project will be to allow people to create and edit items, talents, quests, etc. using an intuitive UI and to save them in a format that allows them to be inserted into a saved game that Pillars of Eternity will recognise.
+## Questions
 
-Some work was already done towards allowing characters to be imported and exported (just like in the IE games) but it turned out a bit more fiddly than initially imagined and was disabled for this release.
+<details>
+<summary><b>The editor didn't find my game</b></summary>
 
-All of the data for the above is present in saved game files though so it should all be eventually possible.
+Open **File → Settings…** and choose the folder that holds `PillarsOfEternity_Data`, for example `C:\Program Files (x86)\Steam\steamapps\common\Pillars of Eternity`.
 
-# Technical Stuff
-There's nothing stopping the code being built on Macs, however the JCEF dependencies are not pre-built and bundled with the source code in the repository yet so you will have to build those too.
+</details>
 
-# What I learned about save files
-I figured some people might be interested in how the save files work since save/load times are a bit of an issue. I haven't delved too deeply but I made a few observations.
+<details>
+<summary><b>Items have odd names, like "Ring Preorder Gauns Pledge"</b></summary>
 
-Firstly, most of main game data is serialized into binary using the SharpSerializer library. It's a free, open-source library and seems fairly mature though after having to essentially re-implement the whole library in Java, I'm not sure it's entirely as fast as it could be when it comes to serialization. Serialization might not be the bottleneck though.
+The editor hasn't read your game's data yet. Open **File → Settings…** and choose **Read game data**. It takes a few minutes, and only has to be done again after the game updates.
 
-Secondly, there is a lot of stuff stored in saved games. Every single item ever sold to a vendor is stored. I think containers and items dropped on the ground are also stored but I haven't looked into the area files yet. Speaking of area files, the fog of war for each area is saved and also probably a few other state variables. This means that, as the game progresses, you will add more and more area files to your save file.
+</details>
 
-The saved games are just compressed zip files. This revelation obviously isn't anything new and I think a lot of save files these days are similar. The only thing to note about this is that they are compressed very heavily, i.e. more than the standard LZMA compression settings. This will mean saving and loading will be slower as the (de)compression step is more intensive. Eternity Keeper only uses default settings and the save files it produces are a fair bit less compressed than the files the game produces. Again, whether this is an actual bottleneck in the save/load process is completely up for debate as the (de)compression time could well just be negligible.
+<details>
+<summary><b>The names are in English, but my game is in another language</b></summary>
 
+Open **File → Settings…** and choose a language under **Names of items and abilities**. Items, abilities and upgrades then carry the names your game shows; the editor's own menus stay in English.
 
-# Testing
-You may run the TestEnvironment tool to automatically copy a small number of saves as well as any necessary game data to a temporary directory on your filesystem and then modify your settings file to point to these. This should make UI testing a bit easier and less destructive. You can run the tool after building the whole project with:
+</details>
 
-	java -cp target/eternity-0.1.-shaded.jar uk.me.mantas.eternity.TestEnvironment <game location> <save location>
+<details>
+<summary><b>I can't change a companion's attributes</b></summary>
 
-Where *<game location>* is the path to your Pillars of Eternity install and *<save location>* is the path to your save file directory.
+The game puts a companion's base attributes back to its own values every time a save loads, so the editor doesn't offer to change them. A companion's skills, class, background and everything else stay changed.
 
-You may also provide the `--help` flag to see advanced options.
+</details>
 
-# Acknowledgements
-The icon used by Eternity Keeper was created by [Alexander Loginov](http://alexanderloginov.deviantart.com/).
+<details>
+<summary><b>Does editing a save switch off achievements?</b></summary>
 
-Pillars of Eternity uses the [SharpSerializer](http://www.sharpserializer.com/) library to serialize its saved game data. The [SharpSerializer](http://www.sharpserializer.com/) source code was therefore referenced heavily in the creation of the serialization implementation however the implementation cannot be considered a complete port as it is coupled tightly with the save game format and cannot function as a serializer/deserializer without it.
+No: the editor never changes the setting the game uses to switch achievements off. If the game's own console switched them off, the **Achievements** button on the editor's **Console** tab switches them back on.
+
+</details>
+
+<details>
+<summary><b>Can I start a new character later in the story?</b></summary>
+
+Yes, using a save from an earlier playthrough that is already where you want to start, say at Caed Nua. Make your new character in a new game and save, then in the editor open that save, choose **Character → Export character to file…**, open the later save and choose **Character → Import character from file…**. The newcomer replaces the main character there, and the story, reputation, companions and money stay as that save has them. Bring gear across with a loadout from the Inventory tab. This works from version 1.1.1 on, and was tested in the game.
+
+</details>
+
+<details>
+<summary><b>What is "Edit raw stats"?</b></summary>
+
+Every number the game stores on a character, for experienced users. Most of them have never been tried in the game, so the other tabs are the safe way to change things.
+
+</details>
+
+<details>
+<summary><b>It won't start from the folder I put it in</b></summary>
+
+Java 8, which the editor runs on, can't start from a folder whose name has letters from outside your Windows language: Cyrillic or Japanese on a Western Windows, for example. Move the editor to a folder like `C:\Games\Eternity Keeper`; the installer checks this for you. Your user name, your saves and your game can be in folders named in any language.
+
+</details>
+
+<details>
+<summary><b>Where are my settings, the log and the backups?</b></summary>
+
+In `%APPDATA%\Eternity Keeper`, whichever way you installed the editor. **File → Settings…** shows the exact path of the log, and **File → Backups…** lists the backups.
+
+</details>
+
+<details>
+<summary><b>How do I uninstall it?</b></summary>
+
+If you used the installer: **Settings → Apps → Installed apps → Eternity Keeper → Uninstall** in Windows. If you used the zip: delete its folder. Either way, your settings and save backups stay in `%APPDATA%\Eternity Keeper` until you delete them.
+
+</details>
+
+<details>
+<summary><b>Does it work on Mac or Linux?</b></summary>
+
+Not yet. Windows is the only system it is tested on: Linux builds compile but are untested, and there is no Mac build.
+
+</details>
+
+## Reporting a problem
+
+[Open an issue](../../issues) and attach `eternity.log` (**File → Settings…** shows where it is). Say what you did, what you expected and what happened. If you can, attach the save too: it helps most of all.
+
+## For developers
+
+Eternity Keeper is a Java 8 desktop application with an embedded Chromium browser for its interface. To build and run it from source:
+
+```bash
+mvn install -Pwin64
+run.bat
+```
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the setup, the tests, making a release and the rules a save edit has to keep. [docs/](docs/README.md) has the notes on the save format and on what the game does with a save when it loads, [ROADMAP.md](ROADMAP.md) the plan, and [CHANGELOG.md](CHANGELOG.md) what changed.
+
+## Credits
+
+Eternity Keeper was created by **Kim Mantas** in 2015 and 2016 ([original on Bitbucket](https://bitbucket.org/Fyorl/eternity-keeper)). **ktully** added the conversion of Windows Store saves (0.20a, 2020), and **[aybrkaknc](https://github.com/aybrkaknc/eternity-keeper)** brought it up to the current game, the turn-based patch included (0.21a, 2026). This version builds on theirs.
+
+The icon is by [Alexander Loginov](http://alexanderloginov.deviantart.com/). Everyone who has worked on the editor is listed in [CONTRIBUTORS](CONTRIBUTORS), and the software it includes in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+## License
+
+[GNU General Public License v3](LICENSE) or later.
+
+<sub>Eternity Keeper is an unofficial fan project, not affiliated with Obsidian Entertainment or Paradox Interactive. It contains no game files: item names, icons and portraits are read from your own copy of the game.</sub>

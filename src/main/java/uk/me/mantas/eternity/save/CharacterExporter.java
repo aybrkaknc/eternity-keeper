@@ -19,13 +19,14 @@
 
 package uk.me.mantas.eternity.save;
 
+import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.factory.PacketDeserializerFactory;
-import uk.me.mantas.eternity.factory.SharpSerializerFactory;
-import uk.me.mantas.eternity.game.ObjectPersistencePacket;
+import uk.me.mantas.eternity.save.model.SaveModel;
+import uk.me.mantas.eternity.save.model.SaveObject;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
-import uk.me.mantas.eternity.serializer.SharpSerializer;
+import uk.me.mantas.eternity.serializer.ShortReadException;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
 
@@ -37,12 +38,13 @@ import java.util.List;
 import java.util.Optional;
 
 public class CharacterExporter {
+	private static final Logger logger = Logger.getLogger(CharacterExporter.class);
+
 	private final File saveDirectory;
 	private final File chrFile;
 	private final String guid;
 
 	private final PacketDeserializerFactory packetDeserializer;
-	private final SharpSerializerFactory sharpSerializer;
 
 	public CharacterExporter (
 		final String savePath
@@ -69,10 +71,30 @@ public class CharacterExporter {
 
 		final Environment environment = Environment.getInstance();
 		packetDeserializer = environment.factory().packetDeserializer();
-		sharpSerializer = environment.factory().sharpSerializer();
 	}
 
-	public boolean export () throws FileNotFoundException {
+	/**
+	 * Writes the character and everything it owns into the file this was made
+	 * for. An export that is refused or fails leaves no file behind: the
+	 * constructor made an empty one to write into, and an empty or partial
+	 * {@code .chr} beside the user's others would look like a character.
+	 *
+	 * @throws ShortReadException when the save could be read only in part --
+	 *         whatever the character owns after the damage would be missing
+	 */
+	public boolean export () throws IOException {
+		boolean exported = false;
+		try {
+			exported = write();
+			return exported;
+		} finally {
+			if (!exported && chrFile.exists() && !chrFile.delete()) {
+				logger.error("Unable to remove the unfinished %s.%n", chrFile.getAbsolutePath());
+			}
+		}
+	}
+
+	private boolean write () throws IOException {
 		final File mobileObjectsFile = new File(saveDirectory, "MobileObjects.save");
 		if (!mobileObjectsFile.exists()) {
 			throw new FileNotFoundException(mobileObjectsFile.getAbsolutePath());
@@ -84,60 +106,38 @@ public class CharacterExporter {
 			return false;
 		}
 
-		final List<Property> mobileObjects = deserialized.get().getPackets();
 		final SimpleProperty count = deserialized.get().getCount();
-		final List<Property> extractedObjects = extractCharactersObjects(mobileObjects);
+		final List<Property> extractedObjects = extractCharactersObjects(SaveModel.of(deserialized.get()));
 		if (extractedObjects.size() < 1) {
 			return false;
 		}
 
-		SharpSerializer serializer = sharpSerializer.forFile(chrFile.getAbsolutePath());
-		Property.update(count, extractedObjects.size());
-		serializer.serialize(count);
-
-		for (Property property : extractedObjects) {
-			serializer.serialize(property);
-		}
+		// The save's own leading count, which the write sets to what the file
+		// holds; the save is never written from this reading.
+		new DeserializedPackets(extractedObjects, count).reserialize(chrFile);
 
 		return true;
 	}
 
-	private List<Property> extractCharactersObjects (
-		List<Property> mobileObjects) {
+	private List<Property> extractCharactersObjects (final SaveModel save) {
+		final List<Property> objs = new ArrayList<>();
 
-		List<Property> objs = new ArrayList<>();
-		Optional<String> objectName = getObjectNameForGUID(mobileObjects);
+		// Real saves contain objects with null ObjectIDs, Parents and
+		// ObjectNames so we match null-safely with the GUID/name on the left.
+		final String objectName = save.objects().stream()
+			.filter(object -> guid.equals(object.id()))
+			.findFirst()
+			.map(SaveObject::name)
+			.orElse(null);
 
-		if (!objectName.isPresent()) {
-			return objs;
-		}
+		for (final SaveObject object : save.objects()) {
+			if (guid.equals(object.id())
+				|| (objectName != null && objectName.equals(object.parent()))) {
 
-		for (Property property : mobileObjects) {
-			ObjectPersistencePacket packet =
-				(ObjectPersistencePacket) property.obj;
-
-			if (packet.ObjectID.equals(guid)
-				|| packet.Parent.equals(objectName.get())) {
-
-				objs.add(property);
+				objs.add(object.property());
 			}
 		}
 
 		return objs;
-	}
-
-	private Optional<String> getObjectNameForGUID (
-		List<Property> mobileObjects) {
-
-		for (Property property : mobileObjects) {
-			ObjectPersistencePacket packet =
-				(ObjectPersistencePacket) property.obj;
-
-			if (packet.ObjectID.equals(guid)) {
-				return Optional.of(packet.ObjectName);
-			}
-		}
-
-		return Optional.empty();
 	}
 }

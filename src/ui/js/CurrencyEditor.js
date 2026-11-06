@@ -59,8 +59,20 @@ CurrencyEditor.prototype.close = function () {
 
 CurrencyEditor.prototype.update = function () {
 	var self = this;
-	self.state.amount = parseInt(self.html.currency.val());
-	Eternity.SavedGame.state.saveData.currency = self.state.amount;
+	var amount = parseInt(self.html.currency.val(), 10);
+
+	// A blank or nonsense entry would otherwise write NaN into the save.
+	if (isNaN(amount) || amount < 0) {
+		self.close();
+		return;
+	}
+
+	self.state.amount = amount;
+	Eternity.SavedGame.state.saveData.currency = amount;
+
+	// Without this the Save button stays disabled and the edit cannot be
+	// written at all — every other editor flags the save the same way.
+	Eternity.Modifications.transition({modifications: true});
 	self.close();
 };
 

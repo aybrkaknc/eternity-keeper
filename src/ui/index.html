@@ -27,6 +27,7 @@
 	<link href="bootstrap/css/bootstrap.min.css" rel="stylesheet">
 	<link href="font-awesome/css/font-awesome.min.css" rel="stylesheet">
 	<link href="css/ui.css" rel="stylesheet">
+	<link href="css/modern.css" rel="stylesheet">
 
 </head>
 <body>
@@ -47,6 +48,36 @@
 							       placeholder="Unable to locate installation folder">
 						</div>
 					</form>
+					<!-- Anything the search worked out but could not act on -- a
+					     Microsoft Store copy, whose files Windows will not let any
+					     program read. -->
+					<div class="settings-note" id="settingsNote"
+					     data-bound="Settings"></div>
+					<!-- Item names and icons, abilities, stronghold upgrades and deities,
+					     read out of the install above. GameData.js draws this and the
+					     banner on the save list from the same state. -->
+					<div class="settings-gamedata">
+						<label>Game data</label>
+						<div class="settings-gamedata-row">
+							<span id="settingsGameData" data-bound="GameData"></span>
+							<button type="button" class="btn btn-primary btn-sm"
+							        id="settingsGameDataStart" data-bound="GameData"></button>
+						</div>
+						<div class="gd-progress" id="settingsGameDataProgress"
+						     data-bound="GameData"><div class="gd-bar"></div></div>
+					</div>
+					<!-- The language the game's own names are shown in: items,
+					     abilities, upgrades, hirelings, quests. Settings.js fills
+					     this from the languages the install has text for, and hides
+					     it when there is only the one. -->
+					<div class="settings-language" id="settingsLanguage" data-bound="Settings">
+						<label for="gameLanguage">Names of items and abilities</label>
+						<select id="gameLanguage" class="form-control input-sm"
+						        data-bound="Settings"></select>
+						<p class="settings-language-note" id="gameLanguageNote"
+						   data-bound="Settings"></p>
+					</div>
+					<p class="settings-files" id="settingsFiles" data-bound="GameData"></p>
 				</div>
 				<div class="modal-footer">
 					<button type="button" class="btn btn-primary btn-sm" id="saveSettings"
@@ -73,6 +104,22 @@
 							<input id="newSaveName" type="text" class="form-control" data-bound="Modifications">
 						</div>
 					</form>
+					<div class="save-target">
+						<div class="save-target-row">
+							<span class="save-target-label">File</span>
+							<span class="save-target-value" id="saveTargetFile"
+							      data-bound="Modifications"></span>
+						</div>
+						<div class="save-target-row">
+							<span class="save-target-label">Folder</span>
+							<span class="save-target-value save-target-path" id="saveTargetFolder"
+							      data-bound="Modifications"></span>
+							<button type="button" class="save-target-browse" id="saveTargetBrowse"
+							        data-bound="Modifications" title="Choose a different folder">
+								<i class="fa fa-folder-open"></i>
+							</button>
+						</div>
+					</div>
 				</div>
 				<div class="modal-footer">
 					<button type="button" class="btn btn-primary btn-sm" id="saveNameBtn"
@@ -114,29 +161,6 @@
 		</div>
 	</div>
 
-	<div class="modal fade" id="updatesDialog" role="dialog" data-bound="Updates">
-		<div class="modal-dialog modal-sm">
-			<div class="modal-content">
-				<div class="modal-body">
-					<button type="button" class="close" data-dismiss="modal">
-						<span>&times;</span>
-					</button>
-					<div id="updatesDialogContents" data-bound="Updates"></div>
-				</div>
-				<div class="modal-footer" id="updatesDialogButtons" data-bound="Updates">
-					<button type="button" class="btn btn-primary btn-sm" id="updatesTryAgain"
-					        data-bound="Updates">
-						Check again
-					</button>
-					<button type="button" class="btn btn-success btn-sm" id="updatesDownload"
-					        data-bound="Updates">
-						Download
-					</button>
-				</div>
-			</div>
-		</div>
-	</div>
-
 	<div class="modal fade" id="exportCharacterDialog" role="dialog" data-bound="ExportCharacter">
 		<div class="modal-dialog modal-sm">
 			<div class="modal-content">
@@ -154,6 +178,293 @@
 					<div class="alert alert-success">
 						Character exported successfully.
 					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal fade" id="renameSaveDialog" role="dialog" data-bound="SaveSearch">
+		<div class="modal-dialog modal-sm">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+					<h4 class="modal-title">Rename save</h4>
+				</div>
+				<div class="modal-body">
+					<p class="pm-dialog-subject"></p>
+					<form onsubmit="return false;">
+						<div class="form-group form-group-sm">
+							<label for="renameSaveInput">New name</label>
+							<input id="renameSaveInput" type="text" class="form-control"
+							       data-bound="SaveSearch" maxlength="60">
+						</div>
+					</form>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="pm-btn pm-btn-dialog" data-dismiss="modal">
+						<i>&#10094;</i> Cancel <i>&#10095;</i>
+					</button>
+					<button type="button" id="renameSaveConfirm" class="pm-btn pm-btn-dialog"
+					        data-bound="SaveSearch">
+						<i>&#10094;</i> Rename <i>&#10095;</i>
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- The copies taken before a save is deleted, renamed or replaced
+	     (Backups.js, save/SaveBackups). Modals keep the dark chrome in both
+	     themes, so nothing here has a light-mode override. -->
+	<div class="modal fade" id="backupsDialog" role="dialog" data-bound="Backups">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+					<h4 class="modal-title">Backups</h4>
+				</div>
+				<div class="modal-body">
+					<p class="bk-intro" id="backupsIntro" data-bound="Backups"></p>
+					<div class="bk-list" id="backupsList" data-bound="Backups"></div>
+					<p class="bk-status" id="backupsStatus" data-bound="Backups"></p>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="pm-btn pm-btn-dialog" id="backupsOpenFolder"
+					        data-bound="Backups">
+						<i>&#10094;</i> Open folder <i>&#10095;</i>
+					</button>
+					<button type="button" class="pm-btn pm-btn-dialog" data-dismiss="modal">
+						<i>&#10094;</i> Close <i>&#10095;</i>
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal fade" id="deleteSaveDialog" role="dialog" data-bound="SaveSearch">
+		<div class="modal-dialog modal-sm">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+					<h4 class="modal-title">Delete save?</h4>
+				</div>
+				<div class="modal-body">
+					<p class="pm-dialog-subject"></p>
+					<p>This deletes the save file from your disk. A copy is kept
+						under File &rarr; Backups, where it can be put back.</p>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="pm-btn pm-btn-dialog" data-dismiss="modal">
+						<i>&#10094;</i> Cancel <i>&#10095;</i>
+					</button>
+					<button type="button" id="deleteSaveConfirm" class="pm-btn pm-btn-dialog pm-btn-danger"
+					        data-bound="SaveSearch">
+						<i>&#10094;</i> Delete <i>&#10095;</i>
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal fade" id="convertSaveDialog" role="dialog" data-bound="SaveSearch">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+					<h4 class="modal-title">Save format</h4>
+				</div>
+				<div class="modal-body">
+					<p class="pm-dialog-subject"></p>
+					<div class="cnv-body" id="convertSaveBody" data-bound="SaveSearch">
+						<p class="cnv-reading">
+							<i class="fa fa-spinner fa-pulse"></i> Reading the save&hellip;
+						</p>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="pm-btn pm-btn-dialog" data-dismiss="modal">
+						<i>&#10094;</i> Close <i>&#10095;</i>
+					</button>
+					<button type="button" id="convertSaveConfirm" class="pm-btn pm-btn-dialog"
+					        data-bound="SaveSearch" disabled>
+						<i>&#10094;</i> Convert <i>&#10095;</i>
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- A loadout file against one character, item by item, before anything is
+	     changed (InventoryEditor.js; handlers/ReadLoadout, ApplyLoadout). A
+	     modal, so the dark chrome in both themes. -->
+	<div class="modal fade" id="loadoutDialog" role="dialog" data-bound="InventoryEditor">
+		<div class="modal-dialog loadout-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+					<h4 class="modal-title">Put on a loadout</h4>
+				</div>
+				<div class="modal-body">
+					<p class="pm-dialog-subject" id="loadoutSubject" data-bound="InventoryEditor"></p>
+					<p class="ld-intro">Each item goes on as a copy, so the originals stay where they
+						are. Whatever it replaces goes to the stash.</p>
+					<div class="ld-list" id="loadoutList" data-bound="InventoryEditor"></div>
+					<p class="ld-status" id="loadoutStatus" data-bound="InventoryEditor"></p>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="pm-btn pm-btn-dialog" data-dismiss="modal">
+						<i>&#10094;</i> Cancel <i>&#10095;</i>
+					</button>
+					<button type="button" id="loadoutConfirm" class="pm-btn pm-btn-dialog"
+					        data-bound="InventoryEditor">
+						<i>&#10094;</i> Put it on <i>&#10095;</i>
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Two saves of the list side by side (CompareSaves.js, SaveCompare.js;
+	     handlers/CompareSaves, save/SaveComparison). Modals keep the dark
+	     chrome in both themes, so nothing here has a light-mode override. -->
+	<div class="modal fade" id="compareSavesDialog" role="dialog" data-bound="CompareSaves">
+		<div class="modal-dialog modal-lg compare-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+					<h4 class="modal-title">Compare saves</h4>
+				</div>
+				<div class="modal-body">
+					<div class="cmp-pickers">
+						<label class="cmp-picker" for="compareBefore">
+							<span>Before</span>
+							<select class="form-control" id="compareBefore" data-bound="CompareSaves"></select>
+						</label>
+						<button type="button" class="pm-btn cmp-swap" id="compareSwap" data-bound="CompareSaves"
+						        title="Swap the two saves">
+							<i class="fa fa-exchange"></i>
+						</button>
+						<label class="cmp-picker" for="compareAfter">
+							<span>After</span>
+							<select class="form-control" id="compareAfter" data-bound="CompareSaves"></select>
+						</label>
+					</div>
+					<div class="cmp-results" id="compareResults" data-bound="CompareSaves"></div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="pm-btn pm-btn-dialog" data-dismiss="modal">
+						<i>&#10094;</i> Close <i>&#10095;</i>
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal fade" id="partyManagementDialog" role="dialog" data-bound="PartyManagement">
+		<div class="modal-dialog pm-dialog">
+			<div class="modal-content pm-content">
+				<div class="pm-titlebar">
+					<span>Party Management</span>
+					<button type="button" class="close pm-close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+				</div>
+				<div class="pm-body">
+					<div class="pm-column pm-column-party">
+						<div class="pm-header">Current Party&nbsp;&nbsp;<span class="pm-count">0/6</span></div>
+						<div class="pm-grid pm-party-grid"></div>
+					</div>
+					<div class="pm-column pm-column-roster">
+						<div class="pm-header">Roster</div>
+						<div class="pm-grid pm-roster-grid"></div>
+					</div>
+				</div>
+				<div class="pm-footer">
+					<div class="pm-info">
+						<div class="pm-info-name"></div>
+						<div class="pm-info-line">
+							<span class="pm-info-class"></span>
+							<span class="pm-info-level"></span>
+						</div>
+						<div class="pm-info-status"></div>
+					</div>
+					<div class="pm-buttons">
+						<button type="button" id="partyManagementAccept" class="pm-btn"
+						        data-bound="PartyManagement">
+							<i>&#10094;</i> Accept <i>&#10095;</i>
+						</button>
+						<button type="button" id="partyManagementCancel" class="pm-btn"
+						        data-bound="PartyManagement" data-dismiss="modal">
+							<i>&#10094;</i> Cancel <i>&#10095;</i>
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal fade" id="stackDialog" role="dialog" data-bound="InventoryEditor">
+		<div class="modal-dialog pm-dialog stack-dialog">
+			<div class="modal-content pm-content">
+				<div class="pm-titlebar">
+					<span id="stackDialogTitle" data-bound="InventoryEditor">Quantity</span>
+					<button type="button" class="close pm-close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+				</div>
+				<div class="pm-body stack-body">
+					<div class="stack-icon" id="stackIcon" data-bound="InventoryEditor"></div>
+					<input type="number" class="form-control" id="stackAmount" min="0"
+					       data-bound="InventoryEditor" />
+					<div class="stack-hint" id="stackHint" data-bound="InventoryEditor"></div>
+				</div>
+				<div class="pm-footer">
+					<button type="button" id="stackAccept" class="pm-btn"
+					        data-bound="InventoryEditor">
+						<i>&#10094;</i> Accept <i>&#10095;</i>
+					</button>
+					<button type="button" id="stackCancel" class="pm-btn"
+					        data-bound="InventoryEditor" data-dismiss="modal">
+						<i>&#10094;</i> Cancel <i>&#10095;</i>
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal fade" id="importOverwriteDialog" role="dialog" data-bound="ImportCharacter">
+		<div class="modal-dialog modal-sm">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+					<h4 class="modal-title">Overwrite character?</h4>
+				</div>
+				<div class="modal-body">
+					<p class="overwrite-message"></p>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-danger btn-sm" id="importOverwriteCancel"
+					        data-bound="ImportCharacter" data-dismiss="modal">
+						Cancel
+					</button>
+					<button type="button" class="btn btn-success btn-sm" id="importOverwriteAgree"
+					        data-bound="ImportCharacter">
+						Agree
+					</button>
 				</div>
 			</div>
 		</div>
@@ -184,6 +495,122 @@
 		</div>
 	</div>
 
+	<!-- Picking a portrait. The save stores two paths on the Portrait
+	     component, both relative to PillarsOfEternity_Data, and the editor
+	     lists whatever is actually in that folder -- including portraits the
+	     player dropped in themselves, which the game loads just the same. -->
+	<div class="modal fade" id="portraitDialog" role="dialog" data-bound="PortraitPicker">
+		<div class="modal-dialog portrait-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+					<h4 class="modal-title">
+						Choose a portrait
+						<span class="ptr-subject" id="portraitSubject"
+						      data-bound="PortraitPicker"></span>
+					</h4>
+				</div>
+				<div class="modal-body">
+					<div class="ptr-filters" id="portraitFilters"
+					     data-bound="PortraitPicker"></div>
+					<form onsubmit="return false;">
+						<div class="form-group form-group-sm">
+							<div class="input-group">
+								<input type="text" class="form-control icon-left ptr-search"
+								       id="portraitSearch" data-bound="PortraitPicker"
+								       placeholder="Search portraits..." />
+								<span class="icon-left"><i class="fa fa-search"></i></span>
+							</div>
+						</div>
+					</form>
+					<div class="ptr-grid" id="portraitGrid" data-bound="PortraitPicker"></div>
+					<button type="button" class="pm-btn ptr-more" id="portraitMore"
+					        data-bound="PortraitPicker">
+						Show more
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Heal, level up and resupply (PartyCare.js). Each row does what the
+	     game would: the heal is its own full-refill flag, the level-up its
+	     AddExperienceToLevel, the supplies its cap for the difficulty. -->
+	<div class="modal fade" id="partyCareDialog" role="dialog" data-bound="PartyCare">
+		<div class="modal-dialog party-care-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+					<h4 class="modal-title">Heal, level up and resupply</h4>
+				</div>
+				<div class="modal-body">
+					<div class="pc-row">
+						<div class="pc-what">
+							<div class="pc-name">Health and stamina</div>
+							<div class="pc-details" id="partyCareHealText" data-bound="PartyCare"></div>
+						</div>
+						<button type="button" class="btn btn-primary btn-sm pc-action" id="partyCareHeal"
+						        data-bound="PartyCare">Heal the party</button>
+					</div>
+					<div class="pc-row">
+						<div class="pc-what">
+							<div class="pc-name">Experience</div>
+							<div class="pc-details" id="partyCareLevelText" data-bound="PartyCare"></div>
+						</div>
+						<select class="form-control input-sm pc-level" id="partyCareLevel"
+						        data-bound="PartyCare" title="The level to bring everyone up to"></select>
+						<button type="button" class="btn btn-primary btn-sm pc-action" id="partyCareLevelUp"
+						        data-bound="PartyCare">Level up</button>
+					</div>
+					<div class="pc-row">
+						<div class="pc-what">
+							<div class="pc-name">Camping supplies</div>
+							<div class="pc-details" id="partyCareSuppliesText" data-bound="PartyCare"></div>
+						</div>
+						<button type="button" class="btn btn-primary btn-sm pc-action" id="partyCareRefill"
+						        data-bound="PartyCare">Refill</button>
+					</div>
+					<p class="pc-status" id="partyCareStatus" data-bound="PartyCare"></p>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="pm-btn pm-btn-dialog" data-dismiss="modal">
+						<i>&#10094;</i> Close <i>&#10095;</i>
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal fade" id="difficultyDialog" role="dialog" data-bound="DifficultyEditor">
+		<div class="modal-dialog difficulty-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+					<h4 class="modal-title">Edit difficulty level</h4>
+				</div>
+				<div class="modal-body">
+					<div class="console-settings">
+						<div class="console-difficulties" id="difficultyRow" data-bound="DifficultyEditor"></div>
+						<div class="console-modes" id="modesRow" data-bound="DifficultyEditor"></div>
+						<div class="console-setting-desc" id="settingDesc" data-bound="DifficultyEditor"></div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-primary btn-sm" id="difficultyEditorDone"
+					        data-bound="DifficultyEditor">
+						Done
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
 	<nav class="navbar navbar-inverse navbar-fixed-top">
 		<div class="container-fluid dark-theme">
 			<div class="row">
@@ -199,40 +626,18 @@
 							<ul class="dropdown-menu">
 								<li>
 									<a href="javascript:void(0);" id="menuOpen" data-bound="Modifications">
-										Open saved game
-									</a>
-								</li>
-								<li class="disabled">
-									<a href="javascript:void(0);" id="menuSaveModifications"
-									   data-bound="Modifications">
-										Save modifications
+										<i class="fa fa-fw fa-folder-open-o"></i> Open saved game&hellip;
 									</a>
 								</li>
 								<li class="divider"></li>
+								<li>
+									<a href="javascript:void(0);" id="menuBackups" data-bound="Backups">
+										<i class="fa fa-fw fa-history"></i> Backups&hellip;
+									</a>
+								</li>
 								<li>
 									<a data-toggle="modal" href="#settingsDialog" id="menu-settings">
-										Settings</a>
-								</li>
-								<li>
-									<a href="javascript:void(0);" id="menuCheckUpdates" data-bound="Updates">
-										Check for updates
-									</a>
-								</li>
-								<li class="divider"></li>
-								<li class="disabled">
-									<a href="javascript:void(0);" id="menu-import-character">
-										Import character
-									</a>
-								</li>
-								<li class="disabled">
-									<a href="javascript:void(0);" id="menuEditGlobals" data-bound="SavedGame">
-										Edit globals
-									</a>
-								</li>
-								<li class="disabled">
-									<a href="javascript:void(0);" id="menuCurrencyEditor" data-bound="CurrencyEditor">
-										Edit currency
-									</a>
+										<i class="fa fa-fw fa-cog"></i> Settings&hellip;</a>
 								</li>
 							</ul>
 						</li>
@@ -242,22 +647,103 @@
 							</a>
 							<ul class="dropdown-menu">
 								<li class="disabled">
-									<a href="javascript:void(0);" id="menuCharacterAttributes" data-bound="SavedGame">
-										Edit attributes
+									<a href="javascript:void(0);" id="menu-party-management"
+									   data-bound="PartyManagement">
+										<i class="fa fa-fw fa-users"></i> Party management&hellip;
 									</a>
 								</li>
 								<li class="disabled">
-									<a href="javascript:void(0);" id="menuCharacterRaw" data-bound="SavedGame">
-										Edit raw values
+									<a href="javascript:void(0);" id="menuPartyCare" data-bound="PartyCare">
+										<i class="fa fa-fw fa-medkit"></i> Heal, level up and resupply&hellip;
 									</a>
 								</li>
 								<li class="divider"></li>
 								<li class="disabled">
-									<a href="javascript:void(0);" id="menu-export-character">Export</a>
+									<a href="javascript:void(0);" id="menuCharacterAttributes" data-bound="SavedGame">
+										<i class="fa fa-fw fa-sliders"></i> Edit attributes
+									</a>
+								</li>
+								<li class="disabled">
+									<a href="javascript:void(0);" id="menuCharacterAbilities"
+									   data-bound="AbilityEditor">
+										<i class="fa fa-fw fa-magic"></i> Edit abilities and talents
+									</a>
+								</li>
+								<li class="disabled">
+									<a href="javascript:void(0);" id="menuCharacterRaw" data-bound="SavedGame">
+										<i class="fa fa-fw fa-table"></i> Edit raw stats
+									</a>
+								</li>
+								<li class="divider"></li>
+								<li class="disabled">
+									<a href="javascript:void(0);" id="menu-import-character"
+									   data-bound="ImportCharacter">
+										<i class="fa fa-fw fa-sign-in"></i> Import character from file&hellip;
+									</a>
+								</li>
+								<li class="disabled">
+									<a href="javascript:void(0);" id="menu-export-character"
+									   data-bound="ExportCharacter">
+										<i class="fa fa-fw fa-sign-out"></i> Export character to file&hellip;</a>
 								</li>
 							</ul>
 						</li>
+						<li class="dropdown" id="menuGlobals">
+							<a class="dropdown-toggle" data-toggle="dropdown" href="javascript:void(0);">
+								Save data <span class="caret"></span>
+							</a>
+							<ul class="dropdown-menu">
+								<li class="disabled">
+									<a href="javascript:void(0);" id="menuEditGlobals" data-bound="SavedGame">
+										<i class="fa fa-fw fa-globe"></i> Edit global variables
+									</a>
+								</li>
+								<li class="disabled">
+									<a href="javascript:void(0);" id="menuCurrencyEditor" data-bound="CurrencyEditor">
+										<i class="fa fa-fw fa-money"></i> Edit party currency&hellip;
+									</a>
+								</li>
+								<li class="disabled">
+									<a href="javascript:void(0);" id="menuDifficultyEditor"
+									   data-bound="DifficultyEditor">
+										<i class="fa fa-fw fa-shield"></i> Edit difficulty level&hellip;
+									</a>
+								</li>
+							</ul>
+						</li>
+						<li id="menuInventory" class="disabled">
+							<a href="javascript:void(0);" id="menuInventoryEditor"
+							   data-bound="InventoryEditor">
+								Inventory
+							</a>
+						</li>
+						<li id="menuStronghold" class="disabled">
+							<a href="javascript:void(0);" id="menuStrongholdEditor"
+							   data-bound="StrongholdEditor">
+								Stronghold
+							</a>
+						</li>
+						<li id="menuGrimoire" class="disabled">
+							<a href="javascript:void(0);" id="menuGrimoireEditor"
+							   data-bound="GrimoireEditor">
+								Grimoire
+							</a>
+						</li>
+						<li id="menuVendors" class="disabled">
+							<a href="javascript:void(0);" id="menuVendorEditor"
+							   data-bound="VendorEditor">
+								Vendors
+							</a>
+						</li>
+						<li id="menuConsole" class="disabled">
+							<a href="javascript:void(0);" id="menuOpenConsole" data-bound="SavedGame">
+								Console
+							</a>
+						</li>
 					</ul>
+					<button type="button" class="btn btn-sm theme-toggle" id="themeToggle">
+						<i class="fa fa-sun-o"></i> <span>Light mode</span>
+					</button>
 				</div>
 			</div>
 		</div>
@@ -265,9 +751,26 @@
 
 	<div class="container-fluid dark-theme">
 		<div class="row">
-			<div class="sidebar sidebar-width">
+			<div class="sidebar sidebar-width" id="sidebar" data-bound="SavedGame">
+				<!-- Find anything (Finder.js): characters, items, abilities and
+				     globals in the open save. -->
+				<div class="finder" id="finder" data-bound="Finder">
+					<div class="input-group">
+						<input type="text" class="form-control icon-left finder-input" id="finderInput"
+						       data-bound="Finder" placeholder="Find anything (Ctrl+F)"
+						       title="Characters, items, abilities, talents and global variables in this save"
+						       autocomplete="off" spellcheck="false" />
+						<span class="icon-left"><i class="fa fa-search"></i></span>
+					</div>
+				</div>
 				<ul class="characters" id="characterList" data-bound="SavedGame"></ul>
+				<button type="button" class="sidebar-toggle" id="sidebarToggle"
+				        data-bound="SavedGame" title="Hide the character list">
+					<i class="fa fa-chevron-left"></i>
+				</button>
 			</div>
+			<!-- Outside the sidebar, which clips anything wider than itself. -->
+			<div class="finder-results" id="finderResults" data-bound="Finder"></div>
 			<div class="main-panel">
 				<div class="row" id="error" data-bound="GenericError">
 					<div class="alert alert-danger alert-dismissable"></div>
@@ -285,9 +788,56 @@
 							<i class="fa fa-spinner fa-pulse"></i> <span></span>
 						</button>
 					</form>
+					<!-- The files in the folder that are not in the list, and why. -->
+					<div class="unreadable-saves" id="unreadableSaves" data-bound="SaveSearch"></div>
+					<!-- Offered until the game's own data has been read: without it the
+					     editor still works, but every item shows its prefab file name.
+					     Inside the search container so it goes wherever the save list
+					     goes. -->
+					<div class="game-data-banner" id="gameDataBanner" data-bound="GameData">
+						<button type="button" class="close" id="gameDataDismiss"
+						        data-bound="GameData" title="Dismiss"><span>&times;</span></button>
+						<div class="gd-message" id="gameDataMessage" data-bound="GameData"></div>
+						<div class="gd-progress" id="gameDataProgress"
+						     data-bound="GameData"><div class="gd-bar"></div></div>
+						<button type="button" class="btn btn-primary btn-sm" id="gameDataStart"
+						        data-bound="GameData"></button>
+					</div>
 				</div>
 				<div class="row save-blocks" id="saveBlocks" data-bound="SaveSearch"></div>
+				<!-- Only ever seen when something is actually wrong: the save the editor
+				     is holding contradicts one of the invariants the format relies on.
+				     Not a .view -- it belongs to the whole save screen, not one tab --
+				     so it carries save-only, which Editor.render hides alongside them. -->
+				<div class="row save-only save-warning" id="saveWarning"
+				     data-bound="SavedGame">
+					<div class="save-warning-head" id="saveWarningHead"
+					     data-bound="SavedGame"></div>
+					<div class="save-warning-list" id="saveWarningList"
+					     data-bound="SavedGame"></div>
+				</div>
 				<div class="row view character" id="character" data-bound="SavedGame">
+					<!-- Revert and Apply for a panel that edits saveData as you type.
+					     Apply is a commit point rather than a write: it makes what is on
+					     screen the baseline Revert goes back to, and Save is still what
+					     puts it on disk. -->
+					<div class="panel-bar" id="charPanelBar" data-bound="PanelChanges">
+						<span class="panel-bar-title" id="charPanelTitle"
+						      data-bound="PanelChanges"></span>
+						<span class="panel-bar-hint">Saved to a new file by the Save button.</span>
+						<span class="panel-bar-actions">
+							<span class="panel-bar-note" id="charPanelNote"
+							      data-bound="PanelChanges"></span>
+							<button type="button" class="pm-btn panel-revert" id="charPanelRevert"
+							        data-bound="PanelChanges" disabled>
+								<i>&#10094;</i> Revert <i>&#10095;</i>
+							</button>
+							<button type="button" class="pm-btn panel-apply" id="charPanelApply"
+							        data-bound="PanelChanges" disabled>
+								<i>&#10094;</i> Apply changes <i>&#10095;</i>
+							</button>
+						</span>
+					</div>
 					<div class="col-sm-4 portrait"></div>
 					<div class="col-sm-3 stats">
 						<div class="row">
@@ -338,8 +888,61 @@
 							</form>
 						</div>
 					</div>
+					<div class="col-sm-4 skills-panel">
+						<div class="skills-head">
+							Skills
+							<span class="skills-remaining">
+								Unspent points
+								<input type="number" class="form-control" id="remainingSkillPoints"
+								       data-bound="SavedGame" min="0">
+							</span>
+						</div>
+						<div class="skills-grid" id="skillsGrid" data-bound="SavedGame"></div>
+						<div class="skills-note" id="skillsNote" data-bound="SavedGame"></div>
+					</div>
+
+					<!-- Who the character is. Every one of these is a
+					     [Persistent] enum on CharacterStats, so they ride the
+					     ordinary scalar path and are written on Save like the
+					     attributes above. -->
+					<div class="col-sm-12 identity-panel" id="identityPanel"
+					     data-bound="SavedGame">
+						<div class="identity-head">Identity</div>
+						<div class="identity-grid" id="identityGrid"
+						     data-bound="SavedGame"></div>
+						<!-- What the six choices add up to, the way the
+						     game's own character sheet will show it: race and
+						     culture are added to the stored attribute scores
+						     on every read, class and background to the skill
+						     ranks. -->
+						<div class="identity-sheet" id="identitySheet"
+						     data-bound="SavedGame"></div>
+						<div class="identity-note" id="identityNote"
+						     data-bound="SavedGame"></div>
+					</div>
 				</div>
 				<div class="row view raw" id="rawTable" data-bound="SavedGame">
+					<!-- Revert and Apply for a panel that edits saveData as you type.
+					     Apply is a commit point rather than a write: it makes what is on
+					     screen the baseline Revert goes back to, and Save is still what
+					     puts it on disk. -->
+					<div class="panel-bar" id="rawPanelBar" data-bound="PanelChanges">
+						<span class="panel-bar-title" id="rawPanelTitle"
+						      data-bound="PanelChanges">Raw variables</span>
+						<span class="panel-bar-hint">Every CharacterStats variable in the save, for this character.</span>
+						<span class="panel-bar-actions">
+							<span class="panel-bar-note" id="rawPanelNote"
+							      data-bound="PanelChanges"></span>
+							<button type="button" class="pm-btn panel-revert" id="rawPanelRevert"
+							        data-bound="PanelChanges" disabled>
+								<i>&#10094;</i> Revert <i>&#10095;</i>
+							</button>
+							<button type="button" class="pm-btn panel-apply" id="rawPanelApply"
+							        data-bound="PanelChanges" disabled>
+								<i>&#10094;</i> Apply changes <i>&#10095;</i>
+							</button>
+						</span>
+					</div>
 					<form>
 						<div class="form-group">
 							<div class="input-group">
@@ -360,6 +963,27 @@
 					</table>
 				</div>
 				<div class="row view globals" id="globalsTable" data-bound="SavedGame">
+					<!-- Revert and Apply for a panel that edits saveData as you type.
+					     Apply is a commit point rather than a write: it makes what is on
+					     screen the baseline Revert goes back to, and Save is still what
+					     puts it on disk. -->
+					<div class="panel-bar" id="globalsPanelBar" data-bound="PanelChanges">
+						<span class="panel-bar-title" id="globalsPanelTitle"
+						      data-bound="PanelChanges">Global variables</span>
+						<span class="panel-bar-hint">World state shared by the whole save.</span>
+						<span class="panel-bar-actions">
+							<span class="panel-bar-note" id="globalsPanelNote"
+							      data-bound="PanelChanges"></span>
+							<button type="button" class="pm-btn panel-revert" id="globalsPanelRevert"
+							        data-bound="PanelChanges" disabled>
+								<i>&#10094;</i> Revert <i>&#10095;</i>
+							</button>
+							<button type="button" class="pm-btn panel-apply" id="globalsPanelApply"
+							        data-bound="PanelChanges" disabled>
+								<i>&#10094;</i> Apply changes <i>&#10095;</i>
+							</button>
+						</span>
+					</div>
 					<form>
 						<div class="form-group">
 							<div class="input-group">
@@ -379,9 +1003,627 @@
 						<tbody></tbody>
 					</table>
 				</div>
+				<div class="row view inventory-view" id="inventoryView" data-bound="InventoryEditor">
+					<div class="panel-bar" id="invPanelBar" data-bound="InventoryEditor">
+						<span class="panel-bar-title">Inventory</span>
+						<span class="panel-bar-hint">Packs, equipment and the shared stash.</span>
+						<span class="panel-bar-actions">
+							<button type="button" class="pm-btn panel-revert" id="invRevert"
+							        data-bound="InventoryEditor">
+								<i>&#10094;</i> Revert <i>&#10095;</i>
+							</button>
+							<button type="button" class="pm-btn panel-apply" id="invApply"
+							        data-bound="InventoryEditor">
+								<i>&#10094;</i> Apply changes <i>&#10095;</i>
+							</button>
+						</span>
+					</div>
+					<div class="inv-doll-panel">
+						<div class="inv-doll-name" id="invCharacterName"
+						     data-bound="InventoryEditor"></div>
+						<!-- As the game's own inventory screen draws the paper doll:
+						     a column of slots down each side of the character. The
+						     portrait stands in for the game's 3D model. -->
+						<div class="inv-doll">
+							<div class="inv-slot-column" id="invSlotsLeft"
+							     data-bound="InventoryEditor"></div>
+							<div class="inv-portrait" id="invPortrait"
+							     data-bound="InventoryEditor"></div>
+							<div class="inv-slot-column" id="invSlotsRight"
+							     data-bound="InventoryEditor"></div>
+						</div>
+						<div class="inv-doll-lower">
+							<div class="inv-quick">
+								<div class="inv-sub-label">Quick Items</div>
+								<div class="inv-quick-slots" id="invQuickSlots"
+								     data-bound="InventoryEditor"></div>
+							</div>
+							<div class="inv-weapons">
+								<div class="inv-sub-label">Weapon Sets</div>
+								<div class="inv-weapon-sets" id="invWeaponSets"
+								     data-bound="InventoryEditor"></div>
+							</div>
+						</div>
+						<!-- What this character wears, holds and keeps in quick
+						     slots, to a file and back onto anyone (Loadout.java). -->
+						<div class="inv-loadout">
+							<span class="inv-sub-label">Loadout</span>
+							<button type="button" class="pm-btn inv-loadout-btn" id="invSaveLoadout"
+							        data-bound="InventoryEditor"
+							        title="Save what this character wears, holds and keeps in quick slots to a file">
+								Save to a file&hellip;
+							</button>
+							<button type="button" class="pm-btn inv-loadout-btn" id="invPutLoadout"
+							        data-bound="InventoryEditor"
+							        title="Put gear saved from anyone, in this save or another, on this character">
+								Put one on&hellip;
+							</button>
+						</div>
+					</div>
+
+					<div class="inv-pack-panel">
+						<div class="inv-panel-head">
+							<span id="invPackTitle" data-bound="InventoryEditor">Party</span>
+						</div>
+						<div class="inv-packs" id="invPacks" data-bound="InventoryEditor"></div>
+					</div>
+
+					<div class="inv-carry" id="invCarry" data-bound="InventoryEditor"></div>
+
+					<div class="inv-stash-panel">
+						<div class="inv-panel-head">
+							<span>Stash</span>
+							<span class="inv-count" id="invStashCount"
+							      data-bound="InventoryEditor"></span>
+						</div>
+						<div class="inv-search">
+							<input type="text" class="form-control" id="invStashSearch"
+							       data-bound="InventoryEditor" placeholder="Search stash..." />
+							<span class="inv-filters" id="invStashFilters"
+							      data-bound="InventoryEditor"></span>
+							<button type="button" class="pm-btn inv-mode-btn" id="invSellMode"
+							        data-bound="InventoryEditor"
+							        title="Pick items to sell instead of moving them">
+								Sell items
+							</button>
+							<button type="button" class="pm-btn inv-mode-btn" id="invTidy"
+							        data-bound="InventoryEditor"
+							        title="Merge split stacks of the same item together">
+								Tidy stacks
+							</button>
+						</div>
+						<div class="inv-sell-bar" id="invSellBar" data-bound="InventoryEditor">
+							<span class="inv-sell-summary" id="invSellSummary"
+							      data-bound="InventoryEditor"></span>
+							<span class="inv-sell-actions">
+								<button type="button" class="pm-btn inv-sell-pick" id="invSellJunk"
+								        data-bound="InventoryEditor"
+								        title="Unenchanted odds and ends &mdash; nothing unique, soulbound, enchanted or quest-related">
+									Select junk
+								</button>
+								<button type="button" class="pm-btn inv-sell-pick" id="invSellAll"
+								        data-bound="InventoryEditor">Select all</button>
+								<button type="button" class="pm-btn inv-sell-pick" id="invSellNone"
+								        data-bound="InventoryEditor">Clear</button>
+								<button type="button" class="pm-btn inv-sell-go" id="invSellConfirm"
+								        data-bound="InventoryEditor">
+									<i>&#10094;</i> Sell <i>&#10095;</i>
+								</button>
+							</span>
+						</div>
+						<div class="inv-stash-grid" id="invStashGrid"
+						     data-bound="InventoryEditor"></div>
+					</div>
+
+					<div class="inv-browser-panel">
+						<div class="inv-panel-head">
+							<span>All items in the game</span>
+							<span class="inv-count" id="invBrowseCount"
+							      data-bound="InventoryEditor"></span>
+						</div>
+						<div class="inv-search">
+							<input type="text" class="form-control" id="invBrowseSearch"
+							       data-bound="InventoryEditor" placeholder="Search all items..." />
+							<span class="inv-filters" id="invBrowseFilters"
+							      data-bound="InventoryEditor"></span>
+							<span class="inv-browse-target">
+								Add to
+								<select class="form-control" id="invBrowseTarget"
+								        data-bound="InventoryEditor"></select>
+							</span>
+						</div>
+						<div class="inv-browse-grid" id="invBrowseGrid"
+						     data-bound="InventoryEditor"></div>
+						<div class="inv-browse-pager">
+							<button type="button" class="pm-btn" id="invBrowsePrev"
+							        data-bound="InventoryEditor">
+								<i>&#10094;</i> Previous
+							</button>
+							<span class="inv-browse-page" id="invBrowsePage"
+							      data-bound="InventoryEditor"></span>
+							<button type="button" class="pm-btn" id="invBrowseNext"
+							        data-bound="InventoryEditor">
+								Next <i>&#10095;</i>
+							</button>
+						</div>
+					</div>
+
+					<div class="inv-status" id="invStatus" data-bound="InventoryEditor"></div>
+				</div>
+				<div class="row view abilities-view" id="abilitiesView" data-bound="AbilityEditor">
+					<div class="panel-bar" id="ablPanelBar" data-bound="AbilityEditor">
+						<span class="panel-bar-title abl-character" id="ablCharacterName"
+						      data-bound="AbilityEditor"></span>
+						<span class="panel-bar-hint abl-character-meta" id="ablCharacterMeta"
+						      data-bound="AbilityEditor"></span>
+						<span class="panel-bar-actions">
+							<span class="panel-bar-note abl-pending" id="ablPending"
+							      data-bound="AbilityEditor"></span>
+							<button type="button" class="pm-btn panel-revert" id="ablRevert"
+							        data-bound="AbilityEditor">
+								<i>&#10094;</i> Revert <i>&#10095;</i>
+							</button>
+							<button type="button" class="pm-btn panel-apply" id="ablApply"
+							        data-bound="AbilityEditor">
+								<i>&#10094;</i> Apply changes <i>&#10095;</i>
+							</button>
+						</span>
+					</div>
+
+					<div class="abl-columns">
+						<div class="abl-panel">
+							<div class="abl-panel-head">
+								<span>Abilities and spells</span>
+								<span class="abl-count" id="ablCount"
+								      data-bound="AbilityEditor"></span>
+							</div>
+							<div class="abl-list" id="ablList" data-bound="AbilityEditor"></div>
+						</div>
+
+						<div class="abl-panel">
+							<div class="abl-panel-head">
+								<span>Talents</span>
+								<span class="abl-count" id="ablTalentCount"
+								      data-bound="AbilityEditor"></span>
+							</div>
+							<div class="abl-list" id="ablTalents" data-bound="AbilityEditor"></div>
+							<div class="abl-panel-head abl-panel-head-sub">
+								<span>Granted by talents</span>
+							</div>
+							<div class="abl-list abl-list-locked" id="ablGranted"
+							     data-bound="AbilityEditor"></div>
+						</div>
+
+						<!-- The browser is the third column, beside what the character
+						     already knows, and all three are the same height. -->
+						<div class="abl-browser-panel">
+							<div class="abl-panel-head">
+								<span>Add an ability, spell or talent</span>
+								<span class="abl-count" id="ablBrowseCount"
+								      data-bound="AbilityEditor"></span>
+							</div>
+							<div class="abl-search">
+								<input type="text" class="form-control" id="ablBrowseSearch"
+								       data-bound="AbilityEditor" placeholder="Search..." />
+								<span class="abl-kinds" id="ablBrowseKinds"
+								      data-bound="AbilityEditor"></span>
+								<label class="abl-any-class">
+									<input type="checkbox" id="ablAnyClass" data-bound="AbilityEditor" />
+									Show everything, not just what this class can take
+								</label>
+								<span class="abl-sort" id="ablBrowseSort"
+								      data-bound="AbilityEditor"></span>
+							</div>
+							<!-- The list on the left, and what the highlighted row actually
+							     does on the right, the way the game explains a talent while
+							     you are choosing one at level-up. -->
+							<div class="abl-browse-columns">
+								<div class="abl-browse-list">
+									<div class="abl-browse-grid" id="ablBrowseGrid"
+									     data-bound="AbilityEditor"></div>
+									<div class="abl-browse-pager">
+										<button type="button" class="pm-btn" id="ablBrowsePrev"
+										        data-bound="AbilityEditor">
+											<i>&#10094;</i> Previous
+										</button>
+										<span class="abl-browse-page" id="ablBrowsePage"
+										      data-bound="AbilityEditor"></span>
+										<button type="button" class="pm-btn" id="ablBrowseNext"
+										        data-bound="AbilityEditor">
+											Next <i>&#10095;</i>
+										</button>
+									</div>
+								</div>
+
+								<div class="abl-detail" id="ablDetail"
+								     data-bound="AbilityEditor"></div>
+							</div>
+						</div>
+					</div>
+
+					<div class="abl-status" id="ablStatus" data-bound="AbilityEditor"></div>
+				</div>
+				<div class="row view stronghold-view" id="strongholdView"
+				     data-bound="StrongholdEditor">
+
+					<!-- Shown instead of everything else when the player has not taken
+					     Caed Nua yet: until SerializedIsActivated is true the
+					     stronghold does not exist as far as the game is concerned. -->
+					<div class="sh-unavailable" id="shUnavailable"
+					     data-bound="StrongholdEditor">
+						<div class="sh-unavailable-mark"><i class="fa fa-lock"></i></div>
+						<h3>Caed Nua is not yours yet</h3>
+						<p>
+							This save has no stronghold to manage. The keep becomes
+							yours during <em>Never Far From the Queen</em>, in Act I,
+							and nothing here can be edited until it does.
+						</p>
+						<p class="sh-unavailable-note">
+							Granting it from the editor is deliberately not offered:
+							taking the keep moves the party, advances a quest and
+							spawns the steward, and flipping the ownership flag on its
+							own would leave a stronghold with none of that.
+						</p>
+					</div>
+
+					<div class="sh-main" id="shMain" data-bound="StrongholdEditor">
+						<div class="panel-bar" id="shPanelBar" data-bound="StrongholdEditor">
+							<span class="panel-bar-title">Caed Nua</span>
+							<span class="panel-bar-hint sh-turn" id="shTurn"
+							      data-bound="StrongholdEditor"></span>
+							<span class="panel-bar-actions">
+								<button type="button" class="pm-btn panel-revert" id="shRevert"
+								        data-bound="StrongholdEditor">
+									<i>&#10094;</i> Revert <i>&#10095;</i>
+								</button>
+								<button type="button" class="pm-btn panel-apply" id="shApply"
+								        data-bound="StrongholdEditor">
+									<i>&#10094;</i> Apply changes <i>&#10095;</i>
+								</button>
+							</span>
+						</div>
+
+						<div class="sh-body">
+							<!-- The game's own upgrade list: icon, name, description,
+							     what it is worth, what it costs, what it needs. -->
+							<div class="sh-upgrades-panel">
+								<div class="sh-panel-head">
+									<span>Upgrades</span>
+									<span class="sh-count" id="shUpgradeCount"
+									      data-bound="StrongholdEditor"></span>
+									<span class="sh-filters" id="shUpgradeFilters"
+									      data-bound="StrongholdEditor"></span>
+								</div>
+								<div class="sh-upgrades" id="shUpgrades"
+								     data-bound="StrongholdEditor"></div>
+							</div>
+
+							<!-- The rail the game puts down the right of the screen. -->
+							<div class="sh-side">
+								<div class="sh-gauges" id="shGauges"
+								     data-bound="StrongholdEditor"></div>
+
+								<div class="sh-numbers-panel">
+									<div class="sh-panel-head"><span>Stronghold</span></div>
+									<div class="sh-numbers" id="shNumbers"
+									     data-bound="StrongholdEditor"></div>
+								</div>
+
+								<!-- Who the keep pays and who it holds. Either can be let
+								     go, as the game's own Dismiss and Release buttons do;
+								     taking someone on happens in the game. -->
+								<div class="sh-people-panel">
+									<div class="sh-panel-head">
+										<span>Hirelings</span>
+										<span class="sh-count" id="shHirelingCount"
+										      data-bound="StrongholdEditor"></span>
+									</div>
+									<div class="sh-people" id="shHirelings"
+									     data-bound="StrongholdEditor"></div>
+								</div>
+
+								<div class="sh-people-panel">
+									<div class="sh-panel-head"><span>Prisoners</span></div>
+									<div class="sh-people" id="shPrisoners"
+									     data-bound="StrongholdEditor"></div>
+								</div>
+
+								<div class="sh-residents-panel">
+									<div class="sh-panel-head"><span>Residents</span></div>
+									<div class="sh-residents" id="shResidents"
+									     data-bound="StrongholdEditor"></div>
+								</div>
+							</div>
+						</div>
+
+						<div class="sh-status" id="shStatus"
+						     data-bound="StrongholdEditor"></div>
+					</div>
+				</div>
+				<!-- The Grimoire view. A grimoire is an item, so this lists books
+				     rather than characters: Grimoire.Find() reads the component off
+				     whatever is in the wearer's grimoire slot, which means one in
+				     the stash is as editable as one being carried. -->
+				<div class="row view grimoire-view" id="grimoireView"
+				     data-bound="GrimoireEditor">
+
+					<div class="grm-unavailable" id="grmUnavailable"
+					     data-bound="GrimoireEditor">
+						<div class="grm-unavailable-mark"><i class="fa fa-book"></i></div>
+						<h3>No grimoire in this save</h3>
+						<p>
+							Nobody in the party is carrying one, and there is none in
+							the stash. A grimoire is an ordinary item &mdash; add one
+							from the Inventory tab and its spells become editable here.
+						</p>
+					</div>
+
+					<div class="grm-main" id="grmMain" data-bound="GrimoireEditor">
+						<div class="panel-bar" id="grmPanelBar" data-bound="GrimoireEditor">
+							<span class="panel-bar-title">Grimoires</span>
+							<span class="panel-bar-hint">Spells belong to the book, not to whoever carries it.</span>
+							<span class="panel-bar-actions">
+								<button type="button" class="pm-btn panel-revert" id="grmRevert"
+								        data-bound="GrimoireEditor">
+									<i>&#10094;</i> Revert <i>&#10095;</i>
+								</button>
+								<button type="button" class="pm-btn panel-apply" id="grmApply"
+								        data-bound="GrimoireEditor">
+									<i>&#10094;</i> Apply changes <i>&#10095;</i>
+								</button>
+							</span>
+						</div>
+						<div class="grm-columns">
+							<div class="grm-books">
+								<div class="grm-books-head">
+									<span>Grimoires</span>
+									<span class="grm-books-count" id="grmBookCount"
+									      data-bound="GrimoireEditor"></span>
+								</div>
+								<div class="grm-book-list" id="grmList"
+								     data-bound="GrimoireEditor"></div>
+							</div>
+
+							<div class="grm-book-body">
+								<div class="grm-head">
+									<span class="grm-title" id="grmTitle"
+									      data-bound="GrimoireEditor"></span>
+								</div>
+
+								<div class="grm-note" id="grmNote"
+								     data-bound="GrimoireEditor"></div>
+
+								<div class="grm-chapters" id="grmChapters"
+								     data-bound="GrimoireEditor"></div>
+
+								<div class="grm-browse-panel">
+									<div class="grm-browse-head">
+										<span>Wizard spells</span>
+										<span class="grm-browse-subtitle">
+											Four to a level, exactly as the game allows &mdash;
+											a fifth is dropped when the save loads.
+										</span>
+									</div>
+									<form class="grm-toolbar" onsubmit="return false;">
+										<div class="input-group">
+											<input type="text" class="form-control icon-left grm-search"
+											       id="grmSearch" data-bound="GrimoireEditor"
+											       placeholder="Search spells..." />
+											<span class="icon-left"><i class="fa fa-search"></i></span>
+										</div>
+										<span class="grm-sort" id="grmSort"
+										      data-bound="GrimoireEditor"></span>
+									</form>
+									<div class="grm-browse" id="grmBrowse"
+									     data-bound="GrimoireEditor"></div>
+									<button type="button" class="pm-btn grm-more" id="grmBrowseMore"
+									        data-bound="GrimoireEditor">
+										Show more
+									</button>
+								</div>
+
+								<div class="grm-status" id="grmStatus"
+								     data-bound="GrimoireEditor"></div>
+							</div>
+						</div>
+					</div>
+				</div>
+				<!-- The Vendors view. A store's stock is not in the world state but in
+				     the area file of the level it stands in, so this is read from
+				     those files on demand. Nothing is picked until the user picks it:
+				     original stock includes uniques nobody has bought yet. -->
+				<div class="row view vendors-view" id="vendorsView" data-bound="VendorEditor">
+					<div class="panel-bar" id="vndPanelBar" data-bound="VendorEditor">
+						<span class="panel-bar-title">Vendors</span>
+						<span class="panel-bar-hint">Pick what to take out of a vendor&rsquo;s stock; nothing goes until you apply.</span>
+						<span class="panel-bar-actions">
+							<button type="button" class="pm-btn panel-revert" id="vndRevert"
+							        data-bound="VendorEditor">
+								<i>&#10094;</i> Revert <i>&#10095;</i>
+							</button>
+							<button type="button" class="pm-btn panel-apply" id="vndApply"
+							        data-bound="VendorEditor">
+								<i>&#10094;</i> Apply changes <i>&#10095;</i>
+							</button>
+						</span>
+					</div>
+
+					<div class="vnd-message" id="vndMessage" data-bound="VendorEditor"></div>
+
+					<div class="vnd-columns" id="vndColumns" data-bound="VendorEditor">
+						<div class="vnd-rail">
+							<div class="vnd-rail-head">
+								<span>Vendors</span>
+								<span class="vnd-rail-count" id="vndCount"
+								      data-bound="VendorEditor"></span>
+							</div>
+							<label class="vnd-rail-option">
+								<input type="checkbox" id="vndShowUnvisited"
+								       data-bound="VendorEditor" />
+								Include vendors never opened
+							</label>
+							<button type="button" class="pm-btn vnd-everywhere" id="vndSelectEverywhere"
+							        data-bound="VendorEditor"
+							        title="Every item that is not a vendor&rsquo;s original stock, at every vendor you have traded with">
+								Select what you sold, everywhere
+							</button>
+							<div class="vnd-list" id="vndList" data-bound="VendorEditor"></div>
+						</div>
+
+						<div class="vnd-body">
+							<div class="vnd-head">
+								<span class="vnd-title" id="vndTitle" data-bound="VendorEditor"></span>
+								<span class="vnd-meta" id="vndMeta" data-bound="VendorEditor"></span>
+							</div>
+
+							<div class="vnd-toolbar">
+								<span class="inv-filters vnd-filters" id="vndFilters"
+								      data-bound="VendorEditor"></span>
+								<span class="vnd-actions">
+									<button type="button" class="pm-btn vnd-action" id="vndSelectSold"
+									        data-bound="VendorEditor">
+										Select what isn&rsquo;t original stock
+									</button>
+									<button type="button" class="pm-btn vnd-action" id="vndSelectNone"
+									        data-bound="VendorEditor">
+										Clear
+									</button>
+								</span>
+							</div>
+
+							<div class="vnd-grid" id="vndGrid" data-bound="VendorEditor"></div>
+
+							<div class="vnd-legend">
+								<span><span class="vnd-legend-mark vnd-legend-original"></span>
+									Original stock &mdash; what the vendor started with, uniques
+									included. Removed, it does not come back.</span>
+								<span><span class="vnd-legend-mark vnd-legend-marked"></span>
+									Picked for removal</span>
+							</div>
+
+							<div class="vnd-detail" id="vndDetail" data-bound="VendorEditor"></div>
+							<div class="vnd-status" id="vndStatus" data-bound="VendorEditor"></div>
+						</div>
+					</div>
+				</div>
+				<div class="row view console-view" id="consoleView" data-bound="ConsoleTab">
+					<!-- Revert and Apply for a panel that edits saveData as you type.
+					     Apply is a commit point rather than a write: it makes what is on
+					     screen the baseline Revert goes back to, and Save is still what
+					     puts it on disk. -->
+					<div class="panel-bar" id="consolePanelBar" data-bound="PanelChanges">
+						<span class="panel-bar-title" id="consolePanelTitle"
+						      data-bound="PanelChanges">Console</span>
+						<span class="panel-bar-hint">Commands apply as you run them; this reverts every one of them.</span>
+						<span class="panel-bar-actions">
+							<span class="panel-bar-note" id="consolePanelNote"
+							      data-bound="PanelChanges"></span>
+							<button type="button" class="pm-btn panel-revert" id="consolePanelRevert"
+							        data-bound="PanelChanges" disabled>
+								<i>&#10094;</i> Revert <i>&#10095;</i>
+							</button>
+							<button type="button" class="pm-btn panel-apply" id="consolePanelApply"
+							        data-bound="PanelChanges" disabled>
+								<i>&#10094;</i> Apply changes <i>&#10095;</i>
+							</button>
+						</span>
+					</div>
+					<div class="console-achievements">
+						<button type="button" id="achievementsToggle" class="pm-btn"
+						        data-bound="ConsoleTab"></button>
+						<span class="console-achievements-note">
+							Toggles only the achievement lock &mdash; active cheats are
+							left untouched.
+						</span>
+					</div>
+					<div class="console-warning">
+						<i class="fa fa-exclamation-triangle"></i>
+						Some commands can break your save in ways that are hard to undo
+						&mdash; keep a backup copy of the save file before experimenting.
+					</div>
+					<div class="console-repl">
+						<div class="console-output" id="consoleOutput" data-bound="ConsoleTab"></div>
+						<form id="consoleForm" data-bound="ConsoleTab" onsubmit="return false;">
+							<div class="input-group">
+								<span class="console-prompt">&gt;</span>
+								<input type="text" id="consoleInput" class="form-control"
+								       data-bound="ConsoleTab" autocomplete="off"
+								       placeholder="Type a command &mdash; try 'help'" />
+							</div>
+						</form>
+					</div>
+					<div class="console-reference">
+						<div class="console-reference-title">
+							In-game console commands
+							<span class="console-reference-subtitle">
+								These run in the game's own console (press <kbd>`</kbd> after
+								<code>IRoll20s</code>) &mdash; the editor cannot execute them,
+								they are listed here for reference only.
+							</span>
+						</div>
+						<form>
+							<div class="form-group">
+								<div class="input-group">
+									<input type="text" class="form-control icon-left table-search"
+									       id="searchReference" data-bound="ConsoleTab"
+									       placeholder="Search commands..." />
+									<span class="icon-left"><i class="fa fa-search"></i></span>
+								</div>
+							</div>
+						</form>
+						<table class="table dark-theme" id="referenceTable" data-bound="ConsoleTab">
+							<thead>
+								<tr>
+									<th>Command</th>
+									<th>Description</th>
+								</tr>
+							</thead>
+							<tbody></tbody>
+						</table>
+					</div>
+				</div>
 			</div>
 		</div>
 	</div>
+
+	<div class="save-actions" id="saveActions" data-bound="SaveSearch">
+		<button type="button" id="saveActionLoad" class="pm-btn" data-bound="SaveSearch">
+			<i>&#10094;</i> Load <i>&#10095;</i>
+		</button>
+		<button type="button" id="saveActionRename" class="pm-btn" data-bound="SaveSearch">
+			<i>&#10094;</i> Rename <i>&#10095;</i>
+		</button>
+		<button type="button" id="saveActionCompare" class="pm-btn" data-bound="CompareSaves"
+		        title="What differs between this save and another">
+			<i>&#10094;</i> Compare <i>&#10095;</i>
+		</button>
+		<button type="button" id="saveActionConvert" class="pm-btn" data-bound="SaveSearch">
+			<i>&#10094;</i> Format <i>&#10095;</i>
+		</button>
+		<button type="button" id="saveActionDelete" class="pm-btn pm-btn-danger" data-bound="SaveSearch">
+			<i>&#10094;</i> Delete <i>&#10095;</i>
+		</button>
+	</div>
+
+	<!-- Undo, Redo and Save act on the same thing -- everything changed since
+	     the save was opened or last written -- so they sit together
+	     (EditHistory.js, Modifications.js). -->
+	<div class="fab-row" id="fabRow">
+		<button type="button" class="history-fab" id="undoButton" data-bound="EditHistory" disabled>
+			<i class="fa fa-undo"></i> Undo
+		</button>
+		<button type="button" class="history-fab" id="redoButton" data-bound="EditHistory" disabled>
+			<i class="fa fa-repeat"></i> Redo
+		</button>
+		<button type="button" class="btn btn-success save-fab" id="saveButton" data-bound="Modifications"
+		        disabled>
+			<i class="fa fa-floppy-o"></i> Save
+		</button>
+	</div>
+	<div class="save-toast" id="saveToast" data-bound="Modifications">
+		<i class="fa fa-check-circle"></i> Changes saved successfully.
+	</div>
+	<div class="save-toast history-toast" id="historyToast" data-bound="EditHistory"></div>
 
 	<div id="progress" data-bound="Progress">
 		<div></div>
@@ -403,6 +1645,13 @@
 					</tr>
 				</tbody>
 			</table>
+			<div class="save-list-details">
+				<span class="list-character"></span>
+				<span class="list-location"></span>
+				<span class="list-date"></span>
+				<span class="list-difficulty"></span>
+				<span class="list-chapter"></span>
+			</div>
 			<i class="fa fa-spinner fa-pulse"></i>
 		</div>
 	</div>
@@ -413,15 +1662,37 @@
 
 	<script src="js/Renderer.js"></script>
 	<script src="js/CloneFactory.js"></script>
+	<script src="js/SaveMerge.js"></script>
+	<script src="js/SaveHistory.js"></script>
+	<script src="js/SaveFind.js"></script>
+	<script src="js/SaveCompare.js"></script>
+	<script src="js/SaveListModel.js"></script>
 
 	<script src="js/GenericError.js"></script>
 	<script src="js/Progress.js"></script>
 	<script src="js/Settings.js"></script>
-	<script src="js/Updates.js"></script>
+	<script src="js/GameData.js"></script>
+	<script src="js/Backups.js"></script>
 	<script src="js/SaveSearch.js"></script>
+	<script src="js/CompareSaves.js"></script>
 	<script src="js/SavedGame.js"></script>
 	<script src="js/CurrencyEditor.js"></script>
+	<script src="js/DifficultyEditor.js"></script>
+	<script src="js/InventoryEditor.js"></script>
+	<script src="js/AbilityEditor.js"></script>
+	<script src="js/StrongholdEditor.js"></script>
+	<script src="js/GrimoireEditor.js"></script>
+	<script src="js/VendorEditor.js"></script>
+	<script src="js/PortraitPicker.js"></script>
+	<script src="js/PanelChanges.js"></script>
+	<script src="js/ConsoleTab.js"></script>
 	<script src="js/Modifications.js"></script>
+	<script src="js/EditHistory.js"></script>
+	<script src="js/ImportCharacter.js"></script>
+	<script src="js/ExportCharacter.js"></script>
+	<script src="js/PartyManagement.js"></script>
+	<script src="js/PartyCare.js"></script>
+	<script src="js/Finder.js"></script>
 	<script src="js/Editor.js"></script>
 
 </body>

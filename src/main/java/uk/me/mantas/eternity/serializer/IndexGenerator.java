@@ -20,18 +20,37 @@
 package uk.me.mantas.eternity.serializer;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+/**
+ * Maintains an insertion-ordered table of unique header items (property names
+ * or C# type descriptors) for a serialized packet while providing O(1) index
+ * lookup via an internal hash index.
+ *
+ * @param <T> the header element type
+ */
 public class IndexGenerator<T> {
 	public final List<T> items = new ArrayList<>();
+	private final Map<T, Integer> indexByItem = new HashMap<>();
 
-	public int getIndexOfItem (T item) {
-		int index = items.indexOf(item);
-		if (index > -1) {
-			return index;
+	/**
+	 * Returns the zero-based table index for {@code item}, appending it to
+	 * {@link #items} on first encounter.
+	 *
+	 * @param item the header element (may be {@code null})
+	 * @return the zero-based index in {@link #items}
+	 */
+	public int getIndexOfItem (final T item) {
+		final Integer existing = indexByItem.get(item);
+		if (existing != null) {
+			return existing;
 		}
 
+		final int index = items.size();
 		items.add(item);
-		return items.size() - 1;
+		indexByItem.put(item, index);
+		return index;
 	}
 }

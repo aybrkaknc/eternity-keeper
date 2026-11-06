@@ -1,0 +1,58 @@
+# Tests on every push and pull request. The Windows zip and installer are
+# built, and the installer tested, by package.yml.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Java 8: the embedded browser's natives are Java 8 era, and the jar
+      # targets it.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          java-package: jdk
+          architecture: x64
+          cache: maven
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Java tests
+        shell: bash
+        run: |
+          set -o pipefail
+          mvn -B -Pwin64 test 2>&1 | tee mvn.log
+
+      # Logs need a GitHub sign-in to read; annotations do not.
+      - name: Report failing tests
+        if: failure()
+        run: python .github/scripts/test_failures.py
+
+      - name: UI merge tests
+        run: node src/test/js/SaveMergeTest.js
+
+      - name: UI search tests
+        run: node src/test/js/SaveFindTest.js
+
+      - name: UI comparison tests
+        run: node src/test/js/SaveCompareTest.js
+
+      - name: UI undo history tests
+        run: node src/test/js/SaveHistoryTest.js
+
+      - name: Game-data reader compiles
+        run: python -m py_compile tools/gamedata/extract_gamedata.py tools/gamedata/items.py tools/gamedata/stronghold.py tools/gamedata/identity.py

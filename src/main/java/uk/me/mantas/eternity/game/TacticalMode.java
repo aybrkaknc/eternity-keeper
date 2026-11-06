@@ -19,10 +19,16 @@
 package uk.me.mantas.eternity.game;
 
 /**
- * Turn Based Patch (3.9.20) tarafından eklenen TacticalMode enum tipi.
- * Savaş modunu belirler: gerçek zamanlı veya sıra bazlı.
+ * Combat mode, added by the Turn Based Patch (3.9.20).
+ *
+ * <p>These are the game's own names, and the order is what matters: the
+ * serializer stores an enum by its ordinal, so a mirror that merely counts the
+ * same still round-trips. The names leak out, though — saveinfo.xml carries
+ * TacticalMode as text for the load screen to read — so calling these
+ * RealTime/TurnBased, as an earlier version did, wrote a value the game has no
+ * name for.
  */
 public enum TacticalMode {
-    RealTime,
-    TurnBased
+	Disabled,
+	RoundBased
 }

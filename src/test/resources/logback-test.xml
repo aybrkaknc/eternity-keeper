@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Tests log to the console only: never into a user's eternity.log. -->
+<configuration>
+	<appender name="stderr" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>%message</pattern>
+		</encoder>
+	</appender>
+
+	<root level="all">
+		<appender-ref ref="stderr" />
+	</root>
+</configuration>

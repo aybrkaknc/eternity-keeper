@@ -89,9 +89,8 @@ public class StatusEffectParams {
 	public boolean IsCleanedUp;
 	public float MergedValue;
 
-	// Turn Based Patch 3.9.20 tarafından eklenen alanlar.
-	// Standart sürümde bu alanlar save dosyasında bulunmaz,
-	// varsayılan değerleri (0.0f / null) korunur.
+	// Added by the Turn Based patch (3.9.20). Saves from before it do not
+	// carry these fields, so they keep their defaults (0.0f / null).
 	public float TacticalMultiplier;
 	public Object Root;
 
